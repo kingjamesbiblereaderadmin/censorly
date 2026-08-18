@@ -1,0 +1,45 @@
+# Censorly
+
+Censorly is a browser extension that filters, hides, censors, or blurs unwanted words on any web page. Everything runs **100% client-side** — there are **zero API calls**, no network requests, and no tracking of any kind.
+
+## Variants
+
+This repository contains the source for all three supported browser variants. The only file that differs between them is `manifest.json`; all other files are shared and identical.
+
+- `chrome/` — Chrome, Edge, and Brave (Manifest V3 service worker)
+- `firefox/` — Firefox (background scripts + `browser_specific_settings.gecko`)
+- `opera/` — Opera (Manifest V3 service worker)
+
+## Repository structure
+
+```
+censorly/
+  README.md
+  LICENSE
+  chrome/    (manifest.json, background.js, content.js, popup.html, popup.js, icons/)
+  firefox/   (manifest.json, background.js, content.js, popup.html, popup.js, icons/)
+  opera/     (manifest.json, background.js, content.js, popup.html, popup.js, icons/)
+```
+
+> Each variant's `icons/` directory should contain `icon16.png`, `icon48.png`, and `icon128.png` (referenced by `manifest.json`). Add your icon assets there before loading the extension.
+
+## Details
+
+- **Version:** 5.6
+- **License:** MIT
+- **CSS prefix:** `cs-`
+- **Contact:** censorlyextension@outlook.sg
+- **Website:** https://censorly-extension.base44.app
+- **Firefox Add-ons (AMO):** https://addons.mozilla.org/en-GB/android/addon/censorly/
+
+## Install (load unpacked)
+
+1. Download or clone this repository.
+2. Pick the folder for your browser (`chrome/`, `firefox/`, or `opera/`).
+3. Add your icon files to that variant's `icons/` directory.
+4. Load it unpacked:
+   - **Chrome / Edge / Brave:** `chrome://extensions` → enable Developer mode → Load unpacked.
+   - **Firefox:** `about:debugging` → This Firefox → Load temporary add-on (select the folder's `manifest.json`).
+   - **Opera:** `extensions` page → enable Developer mode → Load unpacked.
+
+Censorly is desktop only and works on Windows, Mac, and Linux.
