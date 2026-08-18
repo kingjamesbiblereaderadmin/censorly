@@ -27,7 +27,7 @@ censorly/
 
 ## Details
 
-- **Version:** 5.6
+- **Version:** 5.7
 - **License:** MIT
 - **CSS prefix:** `cs-`
 - **Contact:** censorlyextension@outlook.sg
