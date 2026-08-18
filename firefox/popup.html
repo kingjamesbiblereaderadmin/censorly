@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Censorly</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+    /* ─── Dark theme (default) ─── */
+    :root {
+      --bg: #0f1c1e;
+      --bg-input: #142628;
+      --bg-section: #0a1517;
+      --outer-border: #54888b;
+      --border: #1e3a3d;
+      --border-soft: #1a3336;
+      --text: #e8f4f4;
+      --text-dim: #b0d4d4;
+      --text-muted: #8aaeae;
+      --text-faint: #9ec0c0;
+      --accent: #14b8a6;
+      --accent-hover: #0d9488;
+      --action: #0f766e;
+      --action-hover: #115e59;
+      --accent-soft: rgba(20, 184, 166, 0.2);
+      --accent-glow: rgba(20, 184, 166, 0.15);
+      --danger: #f87171;
+      --success: rgba(52, 211, 153, 0.25);
+      --danger-bg: rgba(248, 113, 113, 0.2);
+      --item-border: #1e3a3d;
+      --toggle-off: #2a4144;
+      --item-text: #c0d8d8;
+      --header-start: #0f766e;
+      --header-end: #115e59;
+    }
+
+    /* ─── Light theme ─── */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f0fdfa;
+        --bg-input: #ffffff;
+        --bg-section: #e6f7f5;
+        --outer-border: #37897f;
+        --border: #ccfbf1;
+        --border-soft: #d1f0ec;
+        --text: #134e4a;
+        --text-dim: #0f766e;
+        --text-muted: #5a8a85;
+        --text-faint: #4a7a75;
+        --accent: #0d9488;
+        --accent-hover: #0f766e;
+        --action: #0f766e;
+        --action-hover: #115e59;
+        --accent-soft: rgba(13, 148, 136, 0.12);
+        --accent-glow: rgba(13, 148, 136, 0.08);
+        --danger: #e11d48;
+        --success: rgba(16, 185, 129, 0.15);
+        --danger-bg: rgba(225, 29, 72, 0.12);
+        --item-border: #e0f5f2;
+        --toggle-off: #ccc;
+        --item-text: #4a7a75;
+        --header-start: #0f766e;
+        --header-end: #115e59;
+      }
+    }
+
+    body {
+      width: 340px;
+      background: var(--bg);
+      color: var(--text);
+      border: 2px solid var(--outer-border);
+    }
+
+    /* ─── Header with wave/veil motif ─── */
+    .header {
+      background: linear-gradient(135deg, var(--header-start), var(--header-end));
+      padding: 18px 20px 22px;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 8px;
+      background: var(--bg);
+      border-radius: 16px 16px 0 0;
+    }
+    .header-top { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
+    .header-logo {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.15);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .header-logo svg { width: 18px; height: 18px; }
+    .header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; color: #fff; }
+    .header .badge {
+      font-size: 10px; font-weight: 600;
+      background: rgba(0,0,0,0.38);
+      padding: 3px 10px; border-radius: 20px;
+      margin-left: auto; color: #fff;
+      letter-spacing: 0.5px;
+    }
+    .header .badge.off { background: rgba(0,0,0,0.48); }
+
+    /* ─── Content ─── */
+    .content { padding: 16px 18px; }
+
+    /* ─── Desktop note ─── */
+    .desktop-note {
+      padding: 8px 12px;
+      background: var(--accent-glow);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      margin-bottom: 14px;
+      font-size: 11px;
+      color: var(--text-faint);
+      line-height: 1.4;
+      text-align: center;
+    }
+    .desktop-note strong { color: var(--accent); }
+
+    /* ─── Toggle ─── */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .toggle-row .label-group { display: flex; flex-direction: column; gap: 2px; }
+    .toggle-row label { font-size: 14px; font-weight: 500; cursor: pointer; }
+    .toggle-row .label-hint { font-size: 10px; color: var(--text-muted); }
+    .toggle {
+      position: relative; width: 44px; height: 24px;
+      background: var(--toggle-off);
+      border: none;
+      border-radius: 24px; cursor: pointer;
+      transition: background 0.25s; flex-shrink: 0;
+    }
+    .toggle.on { background: var(--accent); }
+    .toggle::after {
+      content: ''; position: absolute; top: 3px; left: 3px;
+      width: 18px; height: 18px; background: #fff;
+      border-radius: 50%; transition: transform 0.25s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle.on::after { transform: translateX(20px); }
+
+    /* ─── Section titles ─── */
+    .section-title {
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.8px;
+      color: var(--text-dim); margin-bottom: 8px;
+    }
+
+    /* ─── Mode buttons ─── */
+    .mode-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .mode-btn {
+      flex: 1; background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--item-text);
+      padding: 10px 8px; font-size: 12px; font-weight: 500;
+      border-radius: 10px; text-align: center;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .mode-btn:hover { border-color: var(--accent); }
+    .mode-btn.active {
+      background: var(--action); color: #fff;
+      border-color: var(--action);
+      box-shadow: 0 2px 8px var(--accent-soft);
+    }
+    .mode-hint {
+      font-size: 10px; color: var(--text-muted);
+      line-height: 1.5; margin-bottom: 14px;
+      min-height: 28px; padding: 0 4px;
+    }
+
+    /* ─── Refresh button ─── */
+    .refresh-btn {
+      width: 100%; background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 10px; font-size: 12px; font-weight: 500;
+      border-radius: 10px; text-align: center;
+      cursor: pointer; transition: all 0.2s;
+      margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .refresh-btn:hover {
+      background: var(--action); color: #fff;
+      border-color: var(--action);
+    }
+
+    /* ─── Input row ─── */
+    .input-row { display: flex; gap: 8px; margin-bottom: 14px; }
+    input[type="text"] {
+      flex: 1; background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 14px;
+      color: var(--text); font-size: 14px;
+      outline: none; transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+    input[type="text"]::placeholder { color: var(--text-muted); opacity: 1; }
+    button {
+      background: var(--action); color: #fff;
+      border: none; border-radius: 10px;
+      padding: 10px 18px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background 0.2s;
+    }
+    button:hover { background: var(--action-hover); }
+
+    /* ─── Word list ─── */
+    .count { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+    .match-help { font-size: 10px; color: var(--text-faint); line-height: 1.4; margin-bottom: 8px; }
+    .word-list { max-height: 140px; overflow-y: auto; margin-bottom: 14px; }
+    .word-list::-webkit-scrollbar { width: 4px; }
+    .word-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .word-item {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg-input);
+      border: 1px solid var(--item-border);
+      border-radius: 10px; padding: 9px 14px;
+      margin-bottom: 6px; font-size: 14px;
+      transition: border-color 0.15s;
+    }
+    .word-item:hover { border-color: var(--accent); }
+    .word-item .word {
+      flex: 1; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    .match-toggle {
+      flex-shrink: 0;
+      min-width: 58px;
+      padding: 5px 7px;
+      margin-left: 8px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--bg-section);
+      color: var(--text-dim);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .match-toggle:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .match-toggle.wildcard {
+      background: var(--action);
+      border-color: var(--action);
+      color: #fff;
+    }
+    .match-toggle:focus-visible, .word-item .remove:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .word-item .remove {
+      background: transparent; border: none;
+      color: var(--danger); font-size: 18px;
+      cursor: pointer; padding: 0 0 0 8px; line-height: 1;
+    }
+    .empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px 0; }
+
+    /* ─── Site section ─── */
+    .site-section {
+      padding: 14px; background: var(--bg-section);
+      border: 1px solid var(--border-soft);
+      border-radius: 12px; margin-bottom: 14px;
+    }
+    .current-site-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .current-site-name {
+      font-size: 12px; color: var(--item-text);
+      overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; flex: 1; margin-right: 8px;
+    }
+    .exclude-btn { font-size: 12px; padding: 7px 14px; white-space: nowrap; border-radius: 8px; }
+    .exclude-btn.excluded { background: var(--danger); }
+    .exclude-btn.excluded:hover { background: #c02647; }
+    .site-list { max-height: 90px; overflow-y: auto; }
+    .site-list::-webkit-scrollbar { width: 4px; }
+    .site-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .site-item {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg-input);
+      border: 1px solid var(--item-border);
+      border-radius: 8px; padding: 7px 12px;
+      margin-bottom: 4px; font-size: 12px;
+    }
+    .site-item .site-url {
+      flex: 1; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+      color: var(--item-text);
+    }
+    .site-item .remove {
+      background: transparent; border: none;
+      color: var(--danger); font-size: 16px;
+      cursor: pointer; padding: 0 0 0 8px; line-height: 1;
+    }
+
+    /* ─── Disclaimer ─── */
+    .disclaimer {
+      padding: 12px; background: var(--bg-section);
+      border: 1px solid var(--border-soft);
+      border-radius: 12px; margin-bottom: 14px;
+    }
+    .disclaimer .title {
+      font-size: 12px; font-weight: 600;
+      color: var(--accent); margin-bottom: 6px;
+    }
+    .disclaimer .text {
+      font-size: 11px; color: var(--text-faint);
+      line-height: 1.5;
+    }
+
+    /* ─── Footer ─── */
+    .footer {
+      padding: 12px 18px; text-align: center;
+      font-size: 10px; color: var(--text-muted);
+      border-top: 1px solid var(--border-soft);
+    }
+    .footer a { color: var(--accent); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-top">
+      <div class="header-logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 5h16M4 9h16M4 13h16M4 17h16" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.35"/>
+          <rect x="3" y="7.5" width="18" height="3" rx="1.5" fill="#1a1a1a" stroke="#fff" stroke-width="0.5" opacity="0.95"/>
+          <rect x="3" y="15.5" width="18" height="3" rx="1.5" fill="#1a1a1a" stroke="#fff" stroke-width="0.5" opacity="0.95"/>
+        </svg>
+      </div>
+      <h1>Censorly</h1>
+      <span class="badge" id="statusBadge">ON</span>
+    </div>
+  </div>
+  <div class="content">
+    <div class="desktop-note">
+      💻 <strong>Desktop only</strong> — Chrome, Edge & Brave on Windows, Mac & Linux
+    </div>
+
+    <div class="toggle-row">
+      <div class="label-group">
+        <label for="enabledToggle">Filtering enabled</label>
+      </div>
+      <div class="toggle on" id="enabledToggle"></div>
+    </div>
+
+    <div class="section-title">Filter Mode</div>
+    <div class="mode-row">
+      <div class="mode-btn active" data-mode="hide">Hide</div>
+      <div class="mode-btn" data-mode="censor">Censor</div>
+      <div class="mode-btn" data-mode="blur">Blur</div>
+    </div>
+    <div class="mode-hint" id="modeHint"></div>
+    <div class="refresh-btn" id="refreshBtn">🔄 Refresh page to apply</div>
+
+    <div class="section-title">Add a word to filter</div>
+    <div class="input-row">
+      <input type="text" id="wordInput" placeholder="Type a word..." />
+      <button id="addBtn">Add</button>
+    </div>
+
+    <div class="count" id="wordCount"></div>
+    <div class="match-help">Exact matches only that word. Wildcard also matches endings, e.g. spam → spamming.</div>
+    <div class="word-list" id="wordList"></div>
+
+    <div class="site-section">
+      <div class="section-title">This Site</div>
+      <div class="current-site-row">
+        <span class="current-site-name" id="currentSiteName">—</span>
+        <button class="exclude-btn" id="excludeBtn">Exclude</button>
+      </div>
+      <div class="section-title" style="margin-top: 10px;">Excluded Sites</div>
+      <div class="site-list" id="siteList"></div>
+    </div>
+
+    <div class="disclaimer">
+      <div class="title">📋 Limitations</div>
+      <div class="text">
+        Censorly filters text on web pages, search bars, and text boxes.
+        It cannot read or filter text inside PDFs, Word documents, or other
+        file downloads.
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    Censorly v5.6 · <a href="https://censorly-extension.base44.app" target="_blank" rel="noopener">Website</a> · <a href="https://censorly-extension.base44.app/privacy" target="_blank" rel="noopener noreferrer">Privacy</a> · <a href="https://censorly-extension.base44.app/terms" target="_blank" rel="noopener noreferrer">Terms</a> · <a href="mailto:censorlyextension@outlook.sg">Contact</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
