@@ -193,7 +193,7 @@ csStyle.textContent = `
     user-select: text !important;
     -webkit-user-select: text !important;
   }
-  .cs-blur:hover {
+  .cs-blur:hover, .cs-blur:active {
     filter: none !important;
   }
 `;
