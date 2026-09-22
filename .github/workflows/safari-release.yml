@@ -76,6 +76,7 @@ jobs:
           app_id = os.environ["BUNDLE_ID"]
           ext_id = app_id + ".Extension"
           version = json.load(open("safari/manifest.json"))["version"]
+          has_signing = os.environ.get("HAS_SIGNING") == "true"
 
           def patch(match):
               block = match.group(0)
@@ -94,18 +95,22 @@ jobs:
                       f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";',
                       f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";\n'
                       '\t\t\t\tINFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";', 1)
-              block = block.replace("CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;")
-              if "PROVISIONING_PROFILE_SPECIFIER" not in block:
-                  block = re.sub(r'(PRODUCT_BUNDLE_IDENTIFIER[^\n]*\n)',
-                                 r'\1' + f'\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";\n',
-                                 block, count=1)
+              if has_signing:
+                  block = block.replace("CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;")
+                  if "PROVISIONING_PROFILE_SPECIFIER" not in block:
+                      block = re.sub(r'(PRODUCT_BUNDLE_IDENTIFIER[^\n]*\n)',
+                                     r'\1' + f'\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";\n',
+                                     block, count=1)
               return block
 
           out = re.sub(r'buildSettings = \{.*?\n\t\t\t\};', patch, src, flags=re.S)
           open(pbx, "w").write(out)
           ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = \"?([^\";]+)\"?;', out))
           assert app_id in ids and ext_id in ids, ids
-          assert out.count("CODE_SIGN_STYLE = Manual;") >= 2
+          if has_signing:
+              assert out.count("CODE_SIGN_STYLE = Manual;") >= 2
+          else:
+              assert "CODE_SIGN_STYLE = Manual;" not in out
           print("Configured bundle IDs:", sorted(ids))
           PY
 
