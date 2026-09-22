@@ -79,13 +79,13 @@ jobs:
 
           def patch(match):
               block = match.group(0)
-              found = re.search(r'PRODUCT_BUNDLE_IDENTIFIER = "([^"]*)";', block)
+              found = re.search(r'PRODUCT_BUNDLE_IDENTIFIER = \"?([^\";]+)\"?;', block)
               if not found:
                   return block
               is_ext = found.group(1).endswith(".Extension")
               bundle_id = ext_id if is_ext else app_id
               profile = "Censorly for Safari Ext Distribution" if is_ext else "Censorly for Safari Distribution"
-              block = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER = "[^"]*";',
+              block = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER = \"?[^;]+\"?;',
                              f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";', block)
               block = re.sub(r'MARKETING_VERSION = [^;]*;',
                              f'MARKETING_VERSION = "{version}";', block)
@@ -103,7 +103,7 @@ jobs:
 
           out = re.sub(r'buildSettings = \{.*?\n\t\t\t\};', patch, src, flags=re.S)
           open(pbx, "w").write(out)
-          ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = "([^"]*)";', out))
+          ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = \"?([^\";]+)\"?;', out))
           assert app_id in ids and ext_id in ids, ids
           assert out.count("CODE_SIGN_STYLE = Manual;") >= 2
           print("Configured bundle IDs:", sorted(ids))
