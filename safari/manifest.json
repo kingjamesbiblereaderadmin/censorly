@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Censorly",
   "version": "6.0",
-  "description": "Filter, hide, censor, or blur unwanted words on web pages in Safari. macOS only. 100% local, zero API calls.",
+  "description": "Filter, hide, censor, or blur unwanted words on web pages in Safari on iPhone, iPad, and Mac. 100% local, zero API calls.",
   "permissions": [
     "storage",
     "activeTab"

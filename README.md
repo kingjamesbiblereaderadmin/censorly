@@ -11,7 +11,7 @@ This repository contains the source for the supported browser variants, includin
 - `chrome/` — Chrome, Edge, and Brave (Manifest V3 service worker)
 - `firefox/` — Firefox (background scripts + `browser_specific_settings.gecko`)
 - `opera/` — Opera (Manifest V3 service worker)
-- `safari/` — Safari 15.4+ on macOS (Manifest V3, converted and signed through Xcode)
+- `safari/` — Safari 15.4+ on macOS and iOS/iPadOS (Manifest V3, packaged through Xcode)
 
 ## Repository structure
 
@@ -49,4 +49,4 @@ See [`SAFARI-GITHUB.md`](SAFARI-GITHUB.md) to convert, sign, and optionally uplo
    - **Firefox:** `about:debugging` → This Firefox → Load temporary add-on (select the folder's `manifest.json`).
    - **Opera:** `extensions` page → enable Developer mode → Load unpacked.
 
-Censorly is desktop only and works on Windows, Mac, and Linux.
+Chrome, Edge, Brave, Firefox, and Opera builds are desktop variants. Safari also targets iPhone and iPad; an iOS release requires a separate signed iOS app build.
