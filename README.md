@@ -6,11 +6,12 @@ Censorly is a browser extension that filters, hides, censors, or blurs unwanted 
 
 ## Variants
 
-This repository contains the source for all three supported browser variants. The only file that differs between them is `manifest.json`; all other files are shared and identical.
+This repository contains the source for the supported browser variants, including Safari. The only file that differs between them is `manifest.json`; all other files are shared and identical.
 
 - `chrome/` — Chrome, Edge, and Brave (Manifest V3 service worker)
 - `firefox/` — Firefox (background scripts + `browser_specific_settings.gecko`)
 - `opera/` — Opera (Manifest V3 service worker)
+- `safari/` — Safari 15.4+ on macOS (Manifest V3, converted and signed through Xcode)
 
 ## Repository structure
 
@@ -33,6 +34,10 @@ censorly/
 - **Contact:** censorlyextension@outlook.sg
 - **Website:** https://censorly-extension.base44.app
 - **Firefox Add-ons (AMO):** https://addons.mozilla.org/en-GB/android/addon/censorly/
+
+## Safari build
+
+See [`SAFARI-GITHUB.md`](SAFARI-GITHUB.md) to convert, sign, and optionally upload Censorly for Safari with GitHub Actions.
 
 ## Install (load unpacked)
 

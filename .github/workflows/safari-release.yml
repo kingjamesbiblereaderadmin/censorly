@@ -1,0 +1,209 @@
+name: Safari Release (Mac App Store)
+
+# Adapted from the working KJB Reader Safari release workflow.
+# Setup guide: SAFARI-GITHUB.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload the signed package to App Store Connect"
+        type: boolean
+        default: false
+      build_number:
+        description: "Unique build number (blank uses the run number)"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      APP_NAME: "Censorly"
+      BUNDLE_ID: "com.censorly.extension"
+      HAS_SIGNING: ${{ secrets.MAC_APP_CERTIFICATE_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Safari source
+        run: |
+          set -eu
+          test -f safari/manifest.json
+          test -f safari/background.js
+          test -f safari/content.js
+          test -f safari/popup.html
+          test -f safari/popup.js
+          python3 - <<'PY'
+          import json
+          m = json.load(open("safari/manifest.json"))
+          assert m["manifest_version"] == 3
+          assert m["name"] == "Censorly"
+          assert m["background"]["service_worker"] == "background.js"
+          print("Censorly Safari", m["version"], "validated")
+          PY
+
+      - name: Diagnose Safari packaging tools
+        run: |
+          xcodebuild -version
+          xcrun --find safari-web-extension-converter 2>&1 || true
+          xcrun --find safari-web-extension-packager 2>&1 || true
+
+      - name: Convert to Xcode project
+        run: |
+          set -eu
+          if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
+            TOOL=safari-web-extension-packager
+          else
+            TOOL=safari-web-extension-converter
+          fi
+          echo "Using $TOOL"
+          xcrun "$TOOL" "$PWD/safari" \
+            --app-name "$APP_NAME" \
+            --bundle-identifier "$BUNDLE_ID" \
+            --project-location "$PWD" \
+            --macos-only \
+            --swift \
+            --copy-resources --no-open --no-prompt --force
+          test -d "$PWD/$APP_NAME/$APP_NAME.xcodeproj"
+
+      - name: Configure bundle IDs, version, category, and signing
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          app = os.environ["APP_NAME"]
+          pbx = f"{app}/{app}.xcodeproj/project.pbxproj"
+          src = open(pbx).read()
+          app_id = os.environ["BUNDLE_ID"]
+          ext_id = app_id + ".Extension"
+          version = json.load(open("safari/manifest.json"))["version"]
+
+          def patch(match):
+              block = match.group(0)
+              found = re.search(r'PRODUCT_BUNDLE_IDENTIFIER = "([^"]*)";', block)
+              if not found:
+                  return block
+              is_ext = found.group(1).endswith(".Extension")
+              bundle_id = ext_id if is_ext else app_id
+              profile = "Censorly for Safari Ext Distribution" if is_ext else "Censorly for Safari Distribution"
+              block = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER = "[^"]*";',
+                             f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";', block)
+              block = re.sub(r'MARKETING_VERSION = [^;]*;',
+                             f'MARKETING_VERSION = "{version}";', block)
+              if not is_ext and "LSApplicationCategoryType" not in block:
+                  block = block.replace(
+                      f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";',
+                      f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";\n'
+                      '\t\t\t\tINFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";', 1)
+              block = block.replace("CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;")
+              if "PROVISIONING_PROFILE_SPECIFIER" not in block:
+                  block = re.sub(r'(PRODUCT_BUNDLE_IDENTIFIER[^\n]*\n)',
+                                 r'\1' + f'\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";\n',
+                                 block, count=1)
+              return block
+
+          out = re.sub(r'buildSettings = \{.*?\n\t\t\t\};', patch, src, flags=re.S)
+          open(pbx, "w").write(out)
+          ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = "([^"]*)";', out))
+          assert app_id in ids and ext_id in ids, ids
+          assert out.count("CODE_SIGN_STYLE = Manual;") >= 2
+          print("Configured bundle IDs:", sorted(ids))
+          PY
+
+      - name: Import signing certificates
+        if: env.HAS_SIGNING == 'true'
+        env:
+          MAC_APP_P12: ${{ secrets.MAC_APP_CERTIFICATE_P12 }}
+          MAC_APP_P12_PASSWORD: ${{ secrets.MAC_APP_CERTIFICATE_PASSWORD }}
+          MAC_INSTALLER_P12: ${{ secrets.MAC_INSTALLER_CERTIFICATE_P12 }}
+          MAC_INSTALLER_P12_PASSWORD: ${{ secrets.MAC_INSTALLER_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -eu
+          KEYCHAIN=ci.keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN"
+          echo -n "$MAC_APP_P12" | base64 --decode -o app.p12
+          echo -n "$MAC_INSTALLER_P12" | base64 --decode -o installer.p12
+          security import app.p12 -P "$MAC_APP_P12_PASSWORD" -A -k "$KEYCHAIN"
+          security import installer.p12 -P "$MAC_INSTALLER_P12_PASSWORD" -A -k "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr '\n' ' ')
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+      - name: Install provisioning profiles
+        if: env.HAS_SIGNING == 'true'
+        env:
+          MAC_PROFILE: ${{ secrets.MAC_PROVISIONING_PROFILE }}
+          MAC_EXTENSION_PROFILE: ${{ secrets.MAC_EXTENSION_PROVISIONING_PROFILE }}
+        run: |
+          set -eu
+          PROFILES="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES"
+          echo -n "$MAC_PROFILE" | base64 --decode -o "$PROFILES/Censorly.provisionprofile"
+          echo -n "$MAC_EXTENSION_PROFILE" | base64 --decode -o "$PROFILES/CensorlyExtension.provisionprofile"
+
+      - name: Archive and build Mac App Store package
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUILD_NUM: ${{ github.event.inputs.build_number != '' && github.event.inputs.build_number || github.run_number }}
+        run: |
+          set -eu
+          PROJ="$PWD/$APP_NAME/$APP_NAME.xcodeproj"
+          SCHEME=$(xcodebuild -list -project "$PROJ" -json | python3 -c 'import json,sys; s=json.load(sys.stdin)["project"]["schemes"]; print(next((x for x in s if "iOS" not in x and "tvOS" not in x), s[0]))')
+          mkdir -p dist
+          xcodebuild archive \
+            -project "$PROJ" \
+            -scheme "$SCHEME" \
+            -destination 'generic/platform=macOS' \
+            -archivePath "dist/$APP_NAME.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUM"
+          xcrun productbuild \
+            --component "dist/$APP_NAME.xcarchive/Products/Applications/$APP_NAME.app" /Applications \
+            --sign "3rd Party Mac Developer Installer: Shawn Hanlin Poh ($APPLE_TEAM_ID)" \
+            "dist/$APP_NAME.pkg"
+
+      - name: Upload to App Store Connect
+        if: env.HAS_SIGNING == 'true' && github.event.inputs.upload == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_APP_ID: ${{ secrets.CENSORLY_APPLE_APP_ID }}
+          BUILD_NUM: ${{ github.event.inputs.build_number != '' && github.event.inputs.build_number || github.run_number }}
+        run: |
+          set -eu
+          test -n "$APPLE_APP_ID" || { echo "CENSORLY_APPLE_APP_ID is not configured"; exit 1; }
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo -n "$ASC_KEY_P8" | base64 --decode -o "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          VER=$(python3 -c 'import json; print(json.load(open("safari/manifest.json"))["version"])')
+          xcrun altool --upload-package dist/*.pkg \
+            --type macos \
+            --apple-id "$APPLE_APP_ID" \
+            --bundle-id "$BUNDLE_ID" \
+            --bundle-version "$BUILD_NUM" \
+            --bundle-short-version-string "$VER" \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Attach signed package
+        if: env.HAS_SIGNING == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Censorly-Safari-pkg
+          path: dist/*.pkg
+          retention-days: 14
+
+      - name: Package validation artifact
+        if: env.HAS_SIGNING != 'true'
+        run: zip -qr converted-xcode-project.zip "$APP_NAME"
+
+      - name: Attach validation artifact
+        if: env.HAS_SIGNING != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Censorly-Safari-conversion-check
+          path: converted-xcode-project.zip
+          retention-days: 14
