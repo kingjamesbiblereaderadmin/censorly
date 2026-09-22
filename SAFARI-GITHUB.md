@@ -1,6 +1,6 @@
 # Censorly for Safari via GitHub Actions
 
-The workflow at `.github/workflows/safari-release.yml` is adapted from the working KJB Reader Safari release workflow. It converts the files in `safari/` into a macOS Safari Web Extension on a GitHub macOS runner.
+The workflow at `.github/workflows/safari-release.yml` is adapted from the working KJB Reader Safari release workflow. It converts the files in `safari/` into a combined macOS and iOS Safari Web Extension Xcode project on a GitHub macOS runner. Its signed archive and optional upload steps still target the Mac App Store only.
 
 Without Apple signing secrets, it runs in validation mode and uploads the generated Xcode project. With signing configured, it builds a signed Mac App Store `.pkg` and can upload it to App Store Connect.
 

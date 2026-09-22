@@ -61,7 +61,6 @@ jobs:
             --app-name "$APP_NAME" \
             --bundle-identifier "$BUNDLE_ID" \
             --project-location "$PWD" \
-            --macos-only \
             --swift \
             --copy-resources --no-open --no-prompt --force
           test -d "$PWD/$APP_NAME/$APP_NAME.xcodeproj"
@@ -69,7 +68,19 @@ jobs:
       - name: Install Censorly macOS app icon
         run: |
           set -eu
-          APPICON_DIR=$(find "$PWD/$APP_NAME" -type d -name 'AppIcon.appiconset' | head -n 1)
+          # A multiplatform project has separate iOS and macOS asset catalogs.
+          APPICON_DIR=$(python3 - <<'PYICONPATH'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['APP_NAME'])
+          candidates = [p for p in root.rglob('AppIcon.appiconset')
+                        if (p / 'Contents.json').is_file()
+                        and any(image.get('idiom') == 'mac'
+                                for image in json.loads((p / 'Contents.json').read_text()).get('images', []))]
+          assert len(candidates) == 1, f'Expected one Mac app icon set, got {candidates}'
+          print(candidates[0].resolve())
+          PYICONPATH
+          )
           test -n "$APPICON_DIR"
           export APPICON_DIR
           SOURCE="$PWD/safari/app-icon-512.png"
