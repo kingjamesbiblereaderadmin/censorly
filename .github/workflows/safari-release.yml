@@ -20,7 +20,7 @@ jobs:
     runs-on: macos-15
     env:
       APP_NAME: "Censorly"
-      BUNDLE_ID: "com.censorly.extension"
+      BUNDLE_ID: "Com.censorly.extension"
       HAS_SIGNING: ${{ secrets.MAC_APP_CERTIFICATE_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -173,16 +173,20 @@ jobs:
       - name: Upload to App Store Connect
         if: env.HAS_SIGNING == 'true' && github.event.inputs.upload == 'true'
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
           APPLE_APP_ID: ${{ secrets.CENSORLY_APPLE_APP_ID }}
           BUILD_NUM: ${{ github.event.inputs.build_number != '' && github.event.inputs.build_number || github.run_number }}
         run: |
           set -eu
           test -n "$APPLE_APP_ID" || { echo "CENSORLY_APPLE_APP_ID is not configured"; exit 1; }
           mkdir -p "$HOME/.appstoreconnect/private_keys"
-          echo -n "$ASC_KEY_P8" | base64 --decode -o "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          if [[ "$ASC_KEY_P8" == *"BEGIN PRIVATE KEY"* ]]; then
+            printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          else
+            echo -n "$ASC_KEY_P8" | base64 --decode -o "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          fi
           VER=$(python3 -c 'import json; print(json.load(open("safari/manifest.json"))["version"])')
           xcrun altool --upload-package dist/*.pkg \
             --type macos \
