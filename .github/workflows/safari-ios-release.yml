@@ -1,0 +1,200 @@
+name: Safari iOS App Store Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload signed iOS build to App Store Connect"
+        type: boolean
+        default: false
+
+concurrency:
+  group: censorly-ios-store-upload
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      APP_NAME: Censorly
+      BUNDLE_ID: Com.censorly.extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.0'
+
+      - name: Convert Safari extension for iOS and macOS
+        run: |
+          set -eu
+          if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
+            TOOL=safari-web-extension-packager
+          else
+            TOOL=safari-web-extension-converter
+          fi
+          xcrun "$TOOL" "$PWD/safari" \
+            --app-name "$APP_NAME" --bundle-identifier "$BUNDLE_ID" \
+            --project-location "$PWD" --swift \
+            --copy-resources --no-open --no-prompt --force
+          test -d "$APP_NAME/$APP_NAME.xcodeproj"
+
+      - name: Set iPhone and iPad app icon
+        run: |
+          set -eu
+          IOS_ICON=$(python3 - <<'PYICON'
+          import json, pathlib
+          icons = []
+          for directory in pathlib.Path('Censorly').rglob('AppIcon.appiconset'):
+              data = json.loads((directory / 'Contents.json').read_text())
+              for image in data.get('images', []):
+                  if image.get('idiom') == 'universal' and image.get('platform') == 'ios' and image.get('size') == '1024x1024':
+                      icons.append(directory / image['filename'])
+          assert len(icons) == 1, f'Expected one iOS 1024px icon, found {icons}'
+          print(icons[0].resolve())
+          PYICON
+          )
+          sips -z 1024 1024 "$PWD/safari/app-icon-512.png" --out "$IOS_ICON" >/dev/null
+
+      - name: Configure iOS bundle IDs and distribution profiles
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          project = 'Censorly/Censorly.xcodeproj/project.pbxproj'
+          source = open(project).read()
+          app = os.environ['BUNDLE_ID']
+          extension = app + '.Extension'
+          version = json.load(open('safari/manifest.json'))['version']
+          changed = []
+          def patch(match):
+              block = match.group(0)
+              found = re.search(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', block)
+              if not found or not ('SDKROOT = iphoneos;' in block or 'iOS (' in block):
+                  return block
+              is_extension = found.group(1).endswith('.Extension') or '(Extension)/Info.plist' in block
+              bundle = extension if is_extension else app
+              profile = 'Censorly iOS Extension App Store' if is_extension else 'Censorly iOS App Store'
+              block = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER = "?[^";]+"?;', f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle}";', block)
+              block = re.sub(r'MARKETING_VERSION = [^;]*;', f'MARKETING_VERSION = "{version}";', block)
+              block = block.replace('CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;')
+              if 'PROVISIONING_PROFILE_SPECIFIER' not in block:
+                  block = re.sub(r'(PRODUCT_BUNDLE_IDENTIFIER[^\n]*\n)',r'\1' + f'\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";\n',block,count=1)
+              changed.append((bundle,profile))
+              return block
+          result = re.sub(r'buildSettings = \{.*?\n\t\t\t\};', patch, source, flags=re.S)
+          assert {app, extension} <= {b for b,p in changed}, changed
+          assert {'Censorly iOS App Store','Censorly iOS Extension App Store'} <= {p for b,p in changed}, changed
+          open(project,'w').write(result)
+          print('Configured iOS app and extension signing targets:', changed)
+          PY
+
+      - name: Import Apple Distribution signing certificate
+        env:
+          APP_P12: ${{ secrets.MAC_APP_CERTIFICATE_P12 }}
+          APP_P12_PASSWORD: ${{ secrets.MAC_APP_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -eu
+          test -n "$APP_P12" && test -n "$APP_P12_PASSWORD" && test -n "$KEYCHAIN_PASSWORD"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" ci.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" ci.keychain
+          security set-keychain-settings -t 3600 -u ci.keychain
+          echo -n "$APP_P12" | base64 --decode -o app.p12
+          security import app.p12 -P "$APP_P12_PASSWORD" -A -k ci.keychain
+          IOS_CERTIFICATE_SERIAL=$(openssl pkcs12 -in app.p12 -clcerts -nokeys -passin pass:"$APP_P12_PASSWORD" 2>/dev/null | openssl x509 -noout -serial | sed 's/^serial=//')
+          test -n "$IOS_CERTIFICATE_SERIAL"
+          echo "IOS_CERTIFICATE_SERIAL=$IOS_CERTIFICATE_SERIAL" >> "$GITHUB_ENV"
+          security list-keychains -d user -s ci.keychain $(security list-keychains -d user | tr '\n' ' ')
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" ci.keychain
+
+      - name: Install App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          set -eu
+          test -n "$ASC_KEY_ID" && test -n "$ASC_KEY_P8"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          KEY="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          if [[ "$ASC_KEY_P8" == *'BEGIN PRIVATE KEY'* ]]; then
+            printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          else
+            echo -n "$ASC_KEY_P8" | base64 --decode -o "$KEY"
+          fi
+          chmod 600 "$KEY"
+
+      - name: Create Censorly iOS provisioning profiles
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          IOS_APP_BUNDLE_ID: Com.censorly.extension
+          IOS_EXT_BUNDLE_ID: Com.censorly.extension.Extension
+          IOS_APP_PROFILE_NAME: Censorly iOS App Store
+          IOS_EXT_PROFILE_NAME: Censorly iOS Extension App Store
+          IOS_PROFILE_OUTPUT_DIR: ${{ runner.temp }}/ios-profiles
+          IOS_CERTIFICATE_SERIAL: ${{ env.IOS_CERTIFICATE_SERIAL }}
+        run: |
+          set -eu
+          cp "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" "$ASC_KEY_PATH"
+          ruby scripts/create_ios_profiles.rb
+          PROFILES="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES"
+          cp "$IOS_PROFILE_OUTPUT_DIR"/*.mobileprovision "$PROFILES/"
+
+      - name: Archive and export signed iOS app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          BUILD_NUM: ${{ github.run_number }}
+        run: |
+          set -eu
+          test -n "$APPLE_TEAM_ID"
+          PROJ="$PWD/Censorly/Censorly.xcodeproj"
+          SCHEME=$(xcodebuild -list -project "$PROJ" -json | python3 -c 'import json,sys; s=json.load(sys.stdin)["project"]["schemes"]; print(next(x for x in s if "(iOS)" in x and "Extension" not in x))')
+          KEY="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          mkdir -p dist
+          xcodebuild archive -project "$PROJ" -scheme "$SCHEME" \
+            -destination 'generic/platform=iOS' -archivePath "$PWD/dist/Censorly-iOS.xcarchive" \
+            -allowProvisioningUpdates -authenticationKeyPath "$KEY" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_IDENTITY='Apple Distribution' CURRENT_PROJECT_VERSION="$BUILD_NUM"
+          cat > dist/ExportOptions-iOS.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>provisioningProfiles</key><dict>
+              <key>Com.censorly.extension</key><string>Censorly iOS App Store</string>
+              <key>Com.censorly.extension.Extension</key><string>Censorly iOS Extension App Store</string>
+            </dict>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$PWD/dist/Censorly-iOS.xcarchive" \
+            -exportPath "$PWD/dist/ios-export" -exportOptionsPlist dist/ExportOptions-iOS.plist \
+            -allowProvisioningUpdates -authenticationKeyPath "$KEY" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          test -n "$(find dist/ios-export -maxdepth 1 -name '*.ipa' -print -quit)"
+
+      - name: Upload iOS app to App Store Connect
+        if: github.event.inputs.upload == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -eu
+          IPA=$(find dist/ios-export -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$IPA"
+          xcrun altool --upload-app --type ios --file "$IPA" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Attach signed iOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Censorly-Safari-iOS-AppStore
+          path: dist/ios-export/*.ipa
+          retention-days: 14
