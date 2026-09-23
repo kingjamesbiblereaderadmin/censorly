@@ -72,6 +72,17 @@
       border: 2px solid var(--outer-border);
     }
 
+    /* Android extension panels use the available sheet width, not the desktop popover width. */
+    @media (hover: none) and (pointer: coarse) {
+      html, body {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+      }
+      html { background: var(--bg); }
+      body { border: 0; }
+    }
+
     /* ─── Header with wave/veil motif ─── */
     .header {
       background: linear-gradient(135deg, var(--header-start), var(--header-end));
