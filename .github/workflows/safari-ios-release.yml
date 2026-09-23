@@ -191,7 +191,10 @@ jobs:
           IPA=$(find dist/ios-export -maxdepth 1 -name '*.ipa' -print -quit)
           test -n "$IPA"
           xcrun altool --upload-app --type ios --file "$IPA" \
-            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee dist/ios-upload.log
+          # altool can exit 0 even when Apple's validation reports UPLOAD FAILED.
+          grep -q 'UPLOAD SUCCEEDED with no errors' dist/ios-upload.log
+          ! grep -Eq 'UPLOAD FAILED|Validation failed|Failed to upload package' dist/ios-upload.log
 
       - name: Attach signed iOS package
         uses: actions/upload-artifact@v4
