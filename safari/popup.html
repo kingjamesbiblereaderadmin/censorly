@@ -72,6 +72,19 @@
       border: 2px solid var(--outer-border);
     }
 
+    /* iOS Safari displays extension popups in a full-width sheet. The
+       desktop popup's 340px body otherwise leaves unused space around it. */
+    @supports (-webkit-touch-callout: none) {
+      html { width: 100%; min-height: 100%; background: var(--bg); }
+      body {
+        width: 100%; max-width: none;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex; flex-direction: column;
+      }
+      .content { flex: 1 0 auto; }
+    }
+
     /* ─── Header with wave/veil motif ─── */
     .header {
       background: linear-gradient(135deg, var(--header-start), var(--header-end));
