@@ -1,0 +1,75 @@
+name: Safari Xcode Project Download
+
+on:
+  workflow_dispatch:
+
+jobs:
+  convert:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.0'
+      - name: Generate iPhone, iPad, and Mac Xcode project
+        run: |
+          set -eu
+          if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
+            TOOL=safari-web-extension-packager
+          else
+            TOOL=safari-web-extension-converter
+          fi
+          xcrun "$TOOL" "$PWD/safari" \
+            --app-name Censorly \
+            --bundle-identifier Com.censorly.extension \
+            --project-location "$PWD" \
+            --swift --copy-resources --no-open --no-prompt --force
+          test -d Censorly/Censorly.xcodeproj
+      - name: Apply source version and iOS/macOS app icons
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re, subprocess
+          version = json.loads(pathlib.Path('safari/manifest.json').read_text())['version']
+          project = pathlib.Path('Censorly/Censorly.xcodeproj/project.pbxproj')
+          contents = project.read_text()
+          contents, count = re.subn(r'MARKETING_VERSION = [^;]*;', f'MARKETING_VERSION = "{version}";', contents)
+          assert count >= 4, f'Expected app and extension version settings; found {count}'
+          project.write_text(contents)
+          src = pathlib.Path('safari/app-icon-512.png').resolve()
+          catalogs = list(pathlib.Path('Censorly').rglob('AppIcon.appiconset'))
+          assert len(catalogs) >= 2, f'Expected iOS and Mac icon catalogs, found {catalogs}'
+          platforms = set()
+          for directory in catalogs:
+              data = json.loads((directory / 'Contents.json').read_text())
+              for image in data['images']:
+                  platform = image.get('platform') or image.get('idiom')
+                  if platform == 'ios' and image.get('size') == '1024x1024':
+                      size = 1024
+                  elif platform == 'mac':
+                      size = int(image['size'].split('x')[0]) * int(image['scale'][0])
+                  else:
+                      continue
+                  platforms.add(platform)
+                  filename = image.get('filename')
+                  if not filename:
+                      filename = f'censorly-icon-{platform}-{size}.png'
+                      image['filename'] = filename
+                  subprocess.run(['sips', '-z', str(size), str(size), str(src), '--out', str(directory / filename)], check=True, stdout=subprocess.DEVNULL)
+              (directory / 'Contents.json').write_text(json.dumps(data, indent=2) + '\n')
+          assert {'mac', 'ios'} <= platforms, f'Missing app icons: {platforms}'
+          print(f'Prepared Censorly v{version} Xcode project with {platforms} app icons')
+          PY
+          xcodebuild -list -project Censorly/Censorly.xcodeproj
+      - name: Package Xcode project
+        run: |
+          mkdir -p dist
+          VERSION=$(python3 -c "import json; print(json.load(open('safari/manifest.json'))['version'])")
+          ditto -c -k --sequesterRsrc --keepParent Censorly "dist/Censorly-v${VERSION}-Xcode-project.zip"
+          unzip -t "dist/Censorly-v${VERSION}-Xcode-project.zip" | tail -1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Censorly-Safari-Xcode-project
+          path: dist/Censorly-v*-Xcode-project.zip
+          if-no-files-found: error
