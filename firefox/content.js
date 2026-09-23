@@ -1,4 +1,4 @@
-// Content script v5.6 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard
+// Content script v6.1 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard
 
 // ─── State ────────────────────────────────────────────────
 let filterState = {

@@ -1,4 +1,4 @@
-// Popup logic for Censorly v5.5
+// Popup logic for Censorly v6.1
 
 const wordInput = document.getElementById('wordInput');
 const addBtn = document.getElementById('addBtn');
@@ -215,23 +215,34 @@ excludeBtn.addEventListener('click', async () => {
   renderExcludeBtn();
 });
 
+// Fix (v5.6.1): render everything while the popup is still hidden (see
+// `visibility: hidden` on <body> in popup.html) and only reveal it once the
+// async state load, tab lookup, and all renders have completed. This avoids
+// Chrome/Firefox recalculating and repositioning the popup window mid-render
+// (visible "jumping"), and prevents the window from settling at a
+// transient/oversized dimension (leftover gap) instead of its final size.
 (async () => {
   await loadState();
+
+  await new Promise((resolve) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0] && tabs[0].url) {
+        try {
+          currentHostname = new URL(tabs[0].url).hostname;
+        } catch (e) {
+          currentHostname = '';
+        }
+      }
+      resolve();
+    });
+  });
+
   renderWords();
   renderToggle();
   renderMode();
   renderSites();
+  renderExcludeBtn();
 
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0] && tabs[0].url) {
-      try {
-        currentHostname = new URL(tabs[0].url).hostname;
-      } catch (e) {
-        currentHostname = '';
-      }
-    }
-    renderExcludeBtn();
-  });
-
+  document.body.style.visibility = 'visible';
   wordInput.focus();
 })();
