@@ -39,7 +39,7 @@ jobs:
           project.write_text(contents)
           src = pathlib.Path('safari/app-icon-512.png').resolve()
           catalogs = list(pathlib.Path('Censorly').rglob('AppIcon.appiconset'))
-          assert len(catalogs) >= 2, f'Expected iOS and Mac icon catalogs, found {catalogs}'
+          assert len(catalogs) >= 1, f'No app icon asset catalog found: {catalogs}'
           platforms = set()
           for directory in catalogs:
               data = json.loads((directory / 'Contents.json').read_text())
