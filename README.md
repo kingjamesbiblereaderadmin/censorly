@@ -28,7 +28,7 @@ censorly/
 
 ## Details
 
-- **Source versions:** Chrome 5.6, Firefox 6.2, Opera 5.6, Safari 6.0. Firefox 6.2 is source-only until a signed store update is published.
+- **Source version:** 6.2 for Chrome, Firefox, Opera, and Safari. Store-installed versions remain unchanged until separately signed and published.
 - **License:** MIT
 - **CSS prefix:** `cs-`
 - **Contact:** censorlyextension@outlook.sg

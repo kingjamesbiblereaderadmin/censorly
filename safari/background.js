@@ -1,2 +1,2 @@
-// Background service worker — Censorly v6.0
+// Background service worker — Censorly v6.2
 // No PDF interception, no webRequest needed

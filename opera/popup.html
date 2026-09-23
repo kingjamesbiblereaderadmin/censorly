@@ -65,14 +65,29 @@
       }
     }
 
-    body {
+    /* ─── Anti-jump fix (v5.6.1) ───
+       Pin width on BOTH html and body (not just body) so the popup's
+       auto-sizing never latches onto a mismatched dimension, and keep the
+       body hidden until popup.js has finished loading state + rendering —
+       revealed via `document.body.style.visibility = 'visible'` once
+       everything has settled. This eliminates the visible resize/reposition
+       "jump" and the leftover gap from the popup window locking onto a
+       transient size. */
+    html, body {
       width: 340px;
+      min-width: 340px;
+      max-width: 340px;
+      overflow-x: hidden;
+    }
+    body {
       background: var(--bg);
       color: var(--text);
       border: 2px solid var(--outer-border);
+      visibility: hidden;
     }
 
-    /* Android extension panels use the available sheet width, not the desktop popover width. */
+    /* Touchscreen extension sheets should use their full viewport rather than
+       inheriting the desktop popover's fixed 340px width. */
     @media (hover: none) and (pointer: coarse) {
       html, body {
         width: 100%;
@@ -384,7 +399,7 @@
     </div>
   </div>
   <div class="footer">
-    Censorly v5.6 · <a href="https://censorly-extension.base44.app" target="_blank" rel="noopener">Website</a> · <a href="https://censorly-extension.base44.app/privacy" target="_blank" rel="noopener noreferrer">Privacy</a> · <a href="https://censorly-extension.base44.app/terms" target="_blank" rel="noopener noreferrer">Terms</a> · <a href="mailto:censorlyextension@outlook.sg">Contact</a>
+    Censorly v6.2 · <a href="https://censorly-extension.base44.app" target="_blank" rel="noopener">Website</a> · <a href="https://censorly-extension.base44.app/privacy" target="_blank" rel="noopener noreferrer">Privacy</a> · <a href="https://censorly-extension.base44.app/terms" target="_blank" rel="noopener noreferrer">Terms</a> · <a href="https://github.com/kingjamesbiblereaderadmin/censorly" target="_blank" rel="noopener noreferrer">Source Code</a> · <a href="mailto:censorlyextension@outlook.sg">Contact</a>
   </div>
 
   <script src="popup.js"></script>

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Censorly",
-  "version": "5.6",
+  "version": "6.2",
   "description": "Filter, hide, censor, or blur unwanted words on any web page. 100% local, zero API calls, total privacy.",
   "permissions": [
     "storage",
