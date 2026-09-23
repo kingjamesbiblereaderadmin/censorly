@@ -49,6 +49,7 @@ jobs:
               for image in data.get('images', []):
                   if image.get('idiom') == 'universal' and image.get('platform') == 'ios' and image.get('size') == '1024x1024':
                       icons.append(directory / image['filename'])
+          icons = sorted(set(icons))
           assert len(icons) == 1, f'Expected one iOS 1024px icon, found {icons}'
           print(icons[0].resolve())
           PYICON
