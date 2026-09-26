@@ -39,6 +39,29 @@ jobs:
           test -d Censorly/Censorly.xcodeproj
           xcodebuild -list -project Censorly/Censorly.xcodeproj
 
+      - name: Configure bundle identifiers
+        run: |
+          python3 - <<'PY'
+          import re
+          project = 'Censorly/Censorly.xcodeproj/project.pbxproj'
+          source = open(project).read()
+          app = 'Com.censorly.extension'
+          extension = app + '.Extension'
+          def patch(match):
+              block = match.group(0)
+              found = re.search(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', block)
+              if not found:
+                  return block
+              bundle = extension if found.group(1).endswith('.Extension') else app
+              return re.sub(r'PRODUCT_BUNDLE_IDENTIFIER = "?[^";]+"?;',
+                            f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle}";', block)
+          result = re.sub(r'buildSettings = \{.*?\n\t\t\t\};', patch, source, flags=re.S)
+          ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', result))
+          assert ids == {app, extension}, ids
+          open(project,'w').write(result)
+          print('Configured bundle IDs:', sorted(ids))
+          PY
+
       - name: Set iOS app icon
         run: |
           set -eu
@@ -71,6 +94,15 @@ jobs:
           test -d "$APP/PlugIns"
           mkdir -p dist
           ditto -c -k --sequesterRsrc --keepParent "$APP" dist/Censorly-iOS-Simulator.zip
+          APP_PATH="$APP" python3 - <<'PY'
+          import os, plistlib
+          app = os.environ['APP_PATH']
+          app_id = plistlib.load(open(app + '/Info.plist','rb'))['CFBundleIdentifier']
+          ext_id = plistlib.load(open(app + '/PlugIns/Censorly Extension.appex/Info.plist','rb'))['CFBundleIdentifier']
+          assert app_id == 'Com.censorly.extension', app_id
+          assert ext_id == app_id + '.Extension', ext_id
+          print('Verified bundle IDs: app =', app_id, ', extension =', ext_id)
+          PY
 
       - name: Launch app in iPhone simulator
         run: |
