@@ -72,9 +72,49 @@ jobs:
           mkdir -p dist
           ditto -c -k --sequesterRsrc --keepParent "$APP" dist/Censorly-iOS-Simulator.zip
 
+      - name: Launch app in iPhone simulator
+        run: |
+          set -eu
+          UDID=$(xcrun simctl list devices available | python3 - <<'PY'
+          import re
+          out = open(0).read()
+          m = re.search(r'^\s*(iPhone[\w ]*?)\s*\(([-0-9A-Fa-f]+)\)', out, re.M)
+          assert m, 'No available iPhone simulator found'
+          print(m.group(2))
+          PY
+          )
+          echo "Booting iPhone simulator $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          APP=$(find "$PWD/derived-data/Build/Products" -maxdepth 2 -type d -name Censorly.app | head -n 1)
+          test -n "$APP"
+          xcrun simctl install "$UDID" "$APP"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")
+          echo "Launching $BUNDLE_ID in simulator"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          sleep 6
+          if ! pgrep -f 'Censorly.app/Censorly' >/dev/null; then
+            echo 'Censorly did not stay running in the simulator'
+            exit 1
+          fi
+          echo 'Censorly launched and stayed running in the iPhone simulator'
+
       - name: Attach unsigned simulator build
         uses: actions/upload-artifact@v4
         with:
           name: Censorly-iOS-Simulator-unsigned
           path: dist/Censorly-iOS-Simulator.zip
+          if-no-files-found: error
+
+      - name: Attach Xcode project
+        run: |
+          set -eu
+          VERSION=$(python3 -c "import json; print(json.load(open('safari/manifest.json'))['version'])")
+          ditto -c -k --sequesterRsrc --keepParent "$PWD/Censorly" "dist/Censorly-v${VERSION}-iOS-Xcode-project.zip"
+          unzip -t "dist/Censorly-v${VERSION}-iOS-Xcode-project.zip" >/dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Censorly-iOS-Xcode-project
+          path: dist/Censorly-v*-iOS-Xcode-project.zip
           if-no-files-found: error
