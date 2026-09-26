@@ -75,14 +75,13 @@ jobs:
       - name: Launch app in iPhone simulator
         run: |
           set -eu
-          UDID=$(xcrun simctl list devices available | python3 - <<'PY'
-          import re
-          out = open(0).read()
-          m = re.search(r'^\s*(iPhone[\w ]*?)\s*\(([-0-9A-Fa-f]+)\)', out, re.M)
-          assert m, 'No available iPhone simulator found'
+          UDID=$(xcrun simctl list devices available | python3 -c '
+          import re, sys
+          out = sys.stdin.read()
+          m = re.search(r"^\s*(iPhone[^()]*)\s*\(([-0-9A-Fa-f]+)\)", out, re.M)
+          assert m, "No available iPhone simulator found"
           print(m.group(2))
-          PY
-          )
+          ')
           echo "Booting iPhone simulator $UDID"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
