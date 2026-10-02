@@ -186,6 +186,22 @@ jobs:
           assert changed >= 1, 'No ViewController.swift found'
           print(f'Synced extensionBundleIdentifier to {ext} in {changed} file(s)')
           PY
+      - name: Sync Info.plist version strings
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+          version = os.environ['APP_VERSION']
+          changed = 0
+          for plist in pathlib.Path(os.environ['APP_NAME']).rglob('Info.plist'):
+              text = plist.read_text()
+              new, n = re.subn(r'(<key>CFBundleShortVersionString</key>\s*<string>)[^<]*(</string>)',
+                               r'\g<1>' + version + r'\g<2>', text)
+              if n:
+                  plist.write_text(new)
+                  changed += n
+          print(f'Set CFBundleShortVersionString to {version} in {changed} Info.plist file(s)')
+          PY
+
       - name: Import signing certificates
         if: env.HAS_SIGNING == 'true'
         env:
@@ -259,7 +275,7 @@ jobs:
           else
             echo -n "$ASC_KEY_P8" | base64 --decode -o "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           fi
-          VER=$(python3 -c 'import json; print(json.load(open("safari/manifest.json"))["version"])')
+          VER="$APP_VERSION"
           xcrun altool --upload-package dist/*.pkg \
             --type macos \
             --apple-id "$APPLE_APP_ID" \
