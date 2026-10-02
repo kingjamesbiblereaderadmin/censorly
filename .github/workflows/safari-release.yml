@@ -14,6 +14,10 @@ on:
         description: "Unique build number (blank uses the run number)"
         required: false
         default: ""
+      app_version:
+        description: "App Store version string for the app (blank uses 1.0)"
+        required: false
+        default: "1.0"
 
 jobs:
   build:
@@ -21,6 +25,7 @@ jobs:
     env:
       APP_NAME: "Censorly"
       BUNDLE_ID: "Com.censorly.extension"
+      APP_VERSION: ${{ github.event.inputs.app_version != '' && github.event.inputs.app_version || '1.0' }}
       HAS_SIGNING: ${{ secrets.MAC_APP_CERTIFICATE_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -124,7 +129,7 @@ jobs:
           src = open(pbx).read()
           app_id = os.environ["BUNDLE_ID"]
           ext_id = app_id + ".Extension"
-          version = json.load(open("safari/manifest.json"))["version"]
+          version = os.environ["APP_VERSION"]
           has_signing = os.environ.get("HAS_SIGNING") == "true"
 
           def patch(match):
