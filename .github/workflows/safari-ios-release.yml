@@ -76,6 +76,9 @@ jobs:
               profile = 'Censorly iOS Extension App Store' if is_extension else 'Censorly iOS App Store'
               block = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER = "?[^";]+"?;', f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle}";', block)
               block = re.sub(r'MARKETING_VERSION = [^;]*;', f'MARKETING_VERSION = "{version}";', block)
+              if not is_extension and 'ITSAppUsesNonExemptEncryption' not in block:
+                  block = re.sub(r'(PRODUCT_BUNDLE_IDENTIFIER[^\n]*\n)',
+                                 r'\1' + '\t\t\t\tINFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;\n', block, count=1)
               block = block.replace('CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;')
               if 'PROVISIONING_PROFILE_SPECIFIER' not in block:
                   block = re.sub(r'(PRODUCT_BUNDLE_IDENTIFIER[^\n]*\n)',r'\1' + f'\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";\n',block,count=1)

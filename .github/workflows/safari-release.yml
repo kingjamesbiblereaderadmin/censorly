@@ -149,6 +149,11 @@ jobs:
                       f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";',
                       f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";\n'
                       '\t\t\t\tINFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";', 1)
+              if not is_ext and "ITSAppUsesNonExemptEncryption" not in block:
+                  block = block.replace(
+                      f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";',
+                      f'PRODUCT_BUNDLE_IDENTIFIER = "{bundle_id}";\n'
+                      '\t\t\t\tINFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;', 1)
               if has_signing:
                   block = block.replace("CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;")
                   if "PROVISIONING_PROFILE_SPECIFIER" not in block:
