@@ -62,6 +62,24 @@ jobs:
           print(f'Prepared Censorly v{version} Xcode project with {platforms} app icons')
           PY
           xcodebuild -list -project Censorly/Censorly.xcodeproj
+      - name: Sync extension identifier in app template
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          pbx = pathlib.Path('Censorly/Censorly.xcodeproj/project.pbxproj').read_text()
+          ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', pbx))
+          ext = next(i for i in ids if i.endswith('.Extension'))
+          changed = 0
+          for swift in pathlib.Path('Censorly').rglob('ViewController.swift'):
+              text = swift.read_text()
+              text, n = re.subn(r'let extensionBundleIdentifier = "[^"]*"',
+                                f'let extensionBundleIdentifier = "{ext}"', text)
+              assert n == 1, f'{swift}: expected one extensionBundleIdentifier declaration, found {n}'
+              swift.write_text(text)
+              changed += 1
+          assert changed >= 1, 'No ViewController.swift found'
+          print(f'Synced extensionBundleIdentifier to {ext} in {changed} file(s)')
+          PY
       - name: Package Xcode project
         run: |
           mkdir -p dist
