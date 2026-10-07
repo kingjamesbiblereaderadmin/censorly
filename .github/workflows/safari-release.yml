@@ -274,7 +274,7 @@ jobs:
           set -eu
           APP=$(find "dist/$APP_NAME.xcarchive/Products/Applications" -maxdepth 1 -name "*.app" -print -quit)
           test -n "$APP"
-          APPEX=$(find "$APP/PlugIns" -maxdepth 1 -name "*.appex" -print -quit)
+          APPEX=$(find "$APP" -maxdepth 3 -name "*.appex" -print -quit)
           test -n "$APPEX" && test -d "$APPEX"
           APP_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")
           APPEX_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APPEX/Contents/Info.plist")
