@@ -30,6 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.0"
+
       - name: Validate Safari source
         run: |
           set -eu
@@ -262,6 +267,24 @@ jobs:
             --component "dist/$APP_NAME.xcarchive/Products/Applications/$APP_NAME.app" /Applications \
             --sign "3rd Party Mac Developer Installer: Shawn Hanlin Poh ($APPLE_TEAM_ID)" \
             "dist/$APP_NAME.pkg"
+
+      - name: Verify extension wiring in the archive
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          set -eu
+          APP=$(find "dist/$APP_NAME.xcarchive/Products/Applications" -maxdepth 1 -name "*.app" -print -quit)
+          test -n "$APP"
+          APPEX=$(find "$APP/PlugIns" -maxdepth 1 -name "*.appex" -print -quit)
+          test -n "$APPEX" && test -d "$APPEX"
+          APP_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")
+          APPEX_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APPEX/Contents/Info.plist")
+          echo "App ID: $APP_ID | Extension ID: $APPEX_ID"
+          test "$APPEX_ID" = "$APP_ID.Extension"
+          strings "$APP/Contents/MacOS/$APP_NAME" | grep -q "$APPEX_ID"
+          echo "App binary references the extension identifier: OK"
+          grep -rq "open-preferences" "$APP/Contents/Resources" || {
+            echo "open-preferences wiring missing from app resources"; exit 1; }
+          echo "Button wiring in resources: OK"
 
       - name: Upload to App Store Connect
         if: env.HAS_SIGNING == 'true' && github.event.inputs.upload == 'true'
