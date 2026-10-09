@@ -1,4 +1,4 @@
-// Content script v6.2 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard
+// Content script v6.2 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard + editor-safe filtering (rich text editors are never touched)
 
 // ─── State ────────────────────────────────────────────────
 let filterState = {
@@ -199,12 +199,38 @@ csStyle.textContent = `
 `;
 (document.head || document.documentElement).appendChild(csStyle);
 
-// ─── Interactive element detection ───────────────────────
-function isInteractiveContainer(el) {
+// ─── Editable surface detection ───────────────────────────
+// Rich text editors (Slate, Lexical, ProseMirror, Quill, Draft, CodeMirror,
+// Monaco) keep DOM-to-model bindings in WeakMaps. Injecting any foreign node
+// into their DOM — or rebuilding, cloning, or swapping any of their nodes —
+// breaks those bindings and bricks the editor (e.g. "Uncaught Error: Cannot
+// resolve a Slate node from DOM node"). Censorly therefore never touches
+// editable surfaces at all: focused or unfocused, empty or full, their text
+// is left completely unfiltered.
+const EDITABLE_SURFACE_SELECTOR = [
+  '[contenteditable]',
+  '[role="textbox"]',
+  '[role="searchbox"]',
+  'textarea',
+  'input',
+  '[data-slate-editor]',
+  '[data-lexical-editor]',
+  '.ProseMirror',
+  '.ql-editor',
+  '.DraftEditor-root',
+  '.public-DraftEditor-content',
+  '.CodeMirror',
+  '.cm-editor',
+  '.monaco-editor',
+].join(',');
+
+function isEditableSurface(el) {
   if (!el || !el.closest) return false;
-  const editable = el.closest('[contenteditable="true"]');
-  if (editable && document.activeElement === editable) return true;
-  return false;
+  try {
+    return !!el.closest(EDITABLE_SURFACE_SELECTOR);
+  } catch (e) {
+    return false;
+  }
 }
 
 // ─── Accent-insensitive matching ──────────────────────────
@@ -224,13 +250,6 @@ function stripDiacritics(text) {
 // Maps are intentionally iterable: restore and form-submit paths must be able
 // to restore every modified field before clearing tracked originals.
 const originalInputValues = new Map();
-const originalEditableSnapshots = new Map();
-function snapshotEditable(el) {
-  return Array.from(el.childNodes, node => node.cloneNode(true));
-}
-function restoreEditableSnapshot(el, snapshot) {
-  el.replaceChildren(...snapshot.map(node => node.cloneNode(true)));
-}
 const INPUT_SELECTOR = 'input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="tel"], input:not([type]), textarea';
 
 function queryWithin(root, selector) {
@@ -263,17 +282,6 @@ function censorInputFields(root = document) {
     input.dataset.csInputCensored = 'true';
   });
 
-  queryWithin(root, '[contenteditable="true"]').forEach(el => {
-    if (document.activeElement === el || el.dataset.csFiltered === 'true') return;
-    const text = el.textContent;
-    if (!text || text.trim().length < 2) return;
-    if (findMatches(stripDiacritics(text), combinedMatcher).length === 0) return;
-
-    if (!originalEditableSnapshots.has(el)) originalEditableSnapshots.set(el, snapshotEditable(el));
-    filterCrossNodePhrases(el);
-    filterAllText(el);
-    el.dataset.csFiltered = 'true';
-  });
 }
 
 document.addEventListener('focus', (e) => {
@@ -284,13 +292,6 @@ document.addEventListener('focus', (e) => {
       delete e.target.dataset.csInputCensored;
     }
   }
-  if (e.target.isContentEditable) {
-    const orig = originalEditableSnapshots.get(e.target);
-    if (orig !== undefined) {
-      restoreEditableSnapshot(e.target, orig);
-      e.target.removeAttribute('data-cs-filtered');
-    }
-  }
 }, true);
 
 document.addEventListener('blur', (e) => {
@@ -298,22 +299,11 @@ document.addEventListener('blur', (e) => {
     originalInputValues.set(e.target, e.target.value);
     setTimeout(() => censorInputFields(), 50);
   }
-  if (e.target.isContentEditable) {
-    originalEditableSnapshots.set(e.target, snapshotEditable(e.target));
-    setTimeout(() => {
-      e.target.removeAttribute('data-cs-filtered');
-      filterAllText(e.target);
-      e.target.dataset.csFiltered = 'true';
-    }, 50);
-  }
 }, true);
 
 document.addEventListener('submit', (e) => {
   originalInputValues.forEach((original, input) => {
     if (input.form === e.target) input.value = original;
-  });
-  originalEditableSnapshots.forEach((original, el) => {
-    if (el.closest('form') === e.target) restoreEditableSnapshot(el, original);
   });
 }, true);
 
@@ -385,6 +375,7 @@ function processRoot(root) {
   if (!root || !root.isConnected || !isFilteringActive()) return;
   const target = root.nodeType === Node.TEXT_NODE ? root.parentElement : root;
   if (!target || isFilterSpan(target) || target.closest?.('.cs-hide, .cs-censor, .cs-blur')) return;
+  if (isEditableSurface(target)) return;
   if (target === document.body) initialBodyProcessed = true;
   filterCrossNodePhrases(target);
   filterAllText(target);
@@ -397,8 +388,7 @@ function filterAllText(root) {
       const parent = node.parentElement;
       if (!parent || SKIP_TAGS.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
       if (parent.closest?.('.cs-hide, .cs-censor, .cs-blur')) return NodeFilter.FILTER_REJECT;
-      if (parent.closest?.('[contenteditable="true"]') && !root.matches?.('[contenteditable="true"]')) return NodeFilter.FILTER_REJECT;
-      if (isInteractiveContainer(parent)) return NodeFilter.FILTER_REJECT;
+      if (isEditableSurface(parent)) return NodeFilter.FILTER_REJECT;
       return node.nodeValue && node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
     }
   });
@@ -439,7 +429,7 @@ function filterCrossNodePhrases(root) {
 
   for (const container of candidates) {
     if (!container.isConnected || container.closest?.('.cs-hide, .cs-censor, .cs-blur')) continue;
-    if (container.closest?.('[contenteditable="true"]') && !container.matches('[contenteditable="true"]')) continue;
+    if (isEditableSurface(container)) continue;
     if (container.querySelector(`:scope > ${CROSS_NODE_SELECTOR.split(',').join(', :scope > ')}`)) continue;
     filterCrossNodeContainer(container);
   }
@@ -451,6 +441,7 @@ function filterCrossNodeContainer(container) {
       const parent = node.parentElement;
       if (!parent || SKIP_TAGS.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
       if (parent.closest?.('.cs-hide, .cs-censor, .cs-blur')) return NodeFilter.FILTER_REJECT;
+      if (isEditableSurface(parent)) return NodeFilter.FILTER_REJECT;
       return node.nodeValue ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
     }
   });
@@ -502,8 +493,6 @@ function restoreAll() {
   document.querySelectorAll('[data-cs-filtered]').forEach(el => delete el.dataset.csFiltered);
   originalInputValues.forEach((original, input) => { if (input.isConnected) input.value = original; });
   originalInputValues.clear();
-  originalEditableSnapshots.forEach((original, el) => { if (el.isConnected) restoreEditableSnapshot(el, original); });
-  originalEditableSnapshots.clear();
 }
 
 function applyModeInstantly() {
@@ -515,6 +504,7 @@ function queueRoot(node) {
   if (!node || !isFilteringActive()) return;
   let element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
   if (!element || !element.isConnected || isFilterSpan(element) || element.closest?.('.cs-hide, .cs-censor, .cs-blur')) return;
+  if (isEditableSurface(element)) return;
   element = element.closest?.(CROSS_NODE_SELECTOR) || element;
   pendingRoots.add(element);
   if (!flushScheduled) {
