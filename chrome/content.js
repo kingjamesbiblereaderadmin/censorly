@@ -207,6 +207,14 @@ csStyle.textContent = `
 // resolve a Slate node from DOM node"). Censorly therefore never touches
 // editable surfaces at all: focused or unfocused, empty or full, their text
 // is left completely unfiltered.
+//
+// Editor-adjacent widgets are covered too (v6.4). Mention/typeahead pickers,
+// autocomplete popups, emoji menus and comboboxes render OUTSIDE the
+// contenteditable in portals (e.g. twitter.com's @-mention dropdown). They are
+// React-managed: wrapping a suggestion's text in a cs-* span breaks
+// reconciliation, so clicking a suggestion stops filling the composer.
+// Anything with a combobox/listbox/option/menu/menuitem role is part of some
+// input surface, so its text is never filtered either.
 const EDITABLE_SURFACE_SELECTOR = [
   '[contenteditable]',
   '[role="textbox"]',
@@ -222,6 +230,11 @@ const EDITABLE_SURFACE_SELECTOR = [
   '.CodeMirror',
   '.cm-editor',
   '.monaco-editor',
+  '[role="combobox"]',
+  '[role="listbox"]',
+  '[role="option"]',
+  '[role="menu"]',
+  '[role="menuitem"]',
 ].join(',');
 
 function isEditableSurface(el) {
