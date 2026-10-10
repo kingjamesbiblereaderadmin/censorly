@@ -92,7 +92,8 @@ function check(name, cond, extra) {
   // Mention portal untouched — the v6.4 fix
   const portal = doc.getElementById('mention-portal');
   check('mention popup has zero cs-* spans', portal.querySelectorAll(SPAN).length === 0);
-  check('mention option 1 text intact', doc.getElementById('mention-opt-1').textContent.replace(/\s+/g, '') === 'Dick Grayson@dick_grayson');
+  const opt1 = doc.getElementById('mention-opt-1').textContent.split(/\s+/).filter(Boolean).join(' ');
+  check('mention option 1 text intact', opt1 === 'Dick Grayson@dick_grayson', JSON.stringify(opt1));
 
   // Emoji menu untouched
   const menu = doc.getElementById('emoji-menu');
