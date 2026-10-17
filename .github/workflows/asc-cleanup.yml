@@ -15,6 +15,10 @@ on:
         description: "App bundle id"
         required: true
         default: "Com.censorly.extension"
+      rename_to:
+        description: "Instead of deleting, rename the matched version record to this string (empty = delete)"
+        required: false
+        default: ""
       dry_run:
         description: "Only list, do not delete"
         type: boolean
@@ -60,4 +64,5 @@ jobs:
             --bundle-id "${{ inputs.bundle_id }}" \
             --version "${{ inputs.version }}" \
             --platform "${{ inputs.platform }}" \
-            ${{ (inputs.dry_run && '--dry-run') || '' }}
+            ${{ (inputs.dry_run && '--dry-run') || '' }} \
+            ${{ (inputs.rename_to != '' && format('--rename-to {0}', inputs.rename_to)) || '' }}
