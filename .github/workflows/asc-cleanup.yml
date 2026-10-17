@@ -1,0 +1,63 @@
+name: ASC version cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string to delete (e.g. 1.1)"
+        required: true
+        default: "1.1"
+      platform:
+        description: "Platform of the version record (MAC_OS or IOS)"
+        required: true
+        default: "MAC_OS"
+      bundle_id:
+        description: "App bundle id"
+        required: true
+        default: "Com.censorly.extension"
+      dry_run:
+        description: "Only list, do not delete"
+        type: boolean
+        required: true
+        default: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pyjwt
+        run: python3 -m pip install 'pyjwt[crypto]'
+
+      - name: Install App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          set -eu
+          test -n "$ASC_KEY_ID" && test -n "$ASC_KEY_P8"
+          mkdir -p "$RUNNER_TEMP/asc"
+          KEY="$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          if [[ "$ASC_KEY_P8" == *'BEGIN PRIVATE KEY'* ]]; then
+            printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          else
+            echo -n "$ASC_KEY_P8" | base64 --decode -o "$KEY"
+          fi
+          chmod 600 "$KEY"
+          echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+
+      - name: Delete version record
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          python3 scripts/asc_delete_version.py \
+            --bundle-id "${{ inputs.bundle_id }}" \
+            --version "${{ inputs.version }}" \
+            --platform "${{ inputs.platform }}" \
+            ${{ (inputs.dry_run && '--dry-run') || '' }}
