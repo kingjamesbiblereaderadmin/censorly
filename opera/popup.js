@@ -1,4 +1,4 @@
-// Popup logic for Censorly v6.3
+// Popup logic for Censorly v6.4
 
 const wordInput = document.getElementById('wordInput');
 const addBtn = document.getElementById('addBtn');

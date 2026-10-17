@@ -1,4 +1,4 @@
-// Content script — Censorly v6.3
+// Content script — Censorly v6.4
 
 // ─── State ────────────────────────────────────────────────
 let filterState = {

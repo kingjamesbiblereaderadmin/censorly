@@ -28,7 +28,7 @@ censorly/
 
 ## Details
 
-- **Source version:** 6.3 for Chrome, Firefox, Opera, and Safari. Store-installed versions remain unchanged until separately signed and published.
+- **Source version:** 6.4 for Chrome, Firefox, Opera, and Safari. Store-installed versions remain unchanged until separately signed and published.
 - **License:** MIT
 - **CSS prefix:** `cs-`
 - **Contact:** censorlyextension@outlook.sg
