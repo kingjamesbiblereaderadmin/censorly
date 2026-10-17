@@ -5,6 +5,7 @@ Usage:
   asc_delete_version.py --bundle-id Com.censorly.extension --list
   asc_delete_version.py --bundle-id X --version 1.1 --platform MAC_OS            # delete
   asc_delete_version.py --bundle-id X --version 1.1 --platform MAC_OS --rename-to 6.3
+  asc_delete_version.py --bundle-id X --version 6.4 --platform MAC_OS --set-notes "What's new..."
   ... same with --dry-run to only show what would happen
 
 Apple restrictions (observed in the field):
@@ -109,6 +110,7 @@ def main():
     p.add_argument("--version")
     p.add_argument("--platform", default="MAC_OS")
     p.add_argument("--rename-to")
+    p.add_argument("--set-notes", help="Set the version's What's New release notes instead of deleting")
     p.add_argument("--list", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
@@ -141,11 +143,23 @@ def main():
             print(f"SKIP {args.version} ({state}): not editable via API.", file=sys.stderr)
             continue
         if args.dry_run:
-            action = f"rename to {args.rename_to}" if args.rename_to else "delete"
+            action = (f"rename to {args.rename_to}" if args.rename_to
+                      else f"set notes: {args.set_notes[:70]}" if args.set_notes
+                      else "delete")
             print(f"DRY RUN: would {action} {args.platform} {args.version} "
                   f"(id={v['id']}, state={state})")
             continue
-        if args.rename_to:
+        if args.set_notes:
+            code, resp = api(f"/v1/appStoreVersions/{v['id']}", method="PATCH",
+                             data={"data": {"type": "appStoreVersions", "id": v["id"],
+                                            "attributes": {"whatsNew": args.set_notes}}})
+            if code == 200:
+                print(f"NOTES SET on {args.platform} {args.version} (id={v['id']})")
+            else:
+                print(f"SET NOTES FAILED for id={v['id']}: HTTP {code}", file=sys.stderr)
+                print(json.dumps(resp, indent=2)[:1200], file=sys.stderr)
+                sys.exit(1)
+        elif args.rename_to:
             code, resp = api(f"/v1/appStoreVersions/{v['id']}", method="PATCH",
                              data={"data": {"type": "appStoreVersions", "id": v["id"],
                                             "attributes": {"versionString": args.rename_to}}})

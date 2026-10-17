@@ -16,7 +16,11 @@ on:
         required: true
         default: "Com.censorly.extension"
       rename_to:
-        description: "Instead of deleting, rename the matched version record to this string (empty = delete)"
+        description: "Instead of deleting, rename the matched version record to this string (empty = delete unless set_notes)"
+        required: false
+        default: ""
+      set_notes:
+        description: "Instead of deleting, set the matched version's What's New release notes to this text"
         required: false
         default: ""
       dry_run:
@@ -55,14 +59,19 @@ jobs:
           chmod 600 "$KEY"
           echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
 
-      - name: Delete version record
+      - name: Update version record
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          RENAME_TO: ${{ inputs.rename_to }}
+          SET_NOTES: ${{ inputs.set_notes }}
         run: |
-          python3 scripts/asc_delete_version.py \
-            --bundle-id "${{ inputs.bundle_id }}" \
-            --version "${{ inputs.version }}" \
-            --platform "${{ inputs.platform }}" \
-            ${{ (inputs.dry_run && '--dry-run') || '' }} \
-            ${{ (inputs.rename_to != '' && format('--rename-to {0}', inputs.rename_to)) || '' }}
+          set -eu
+          ARGS=(scripts/asc_delete_version.py
+                --bundle-id "${{ inputs.bundle_id }}"
+                --version "${{ inputs.version }}"
+                --platform "${{ inputs.platform }}")
+          [[ "${{ inputs.dry_run }}" == "true" ]] && ARGS+=(--dry-run)
+          [[ -n "$RENAME_TO" ]] && ARGS+=(--rename-to "$RENAME_TO")
+          [[ -n "$SET_NOTES" ]] && ARGS+=(--set-notes "$SET_NOTES")
+          python3 "${ARGS[@]}"
