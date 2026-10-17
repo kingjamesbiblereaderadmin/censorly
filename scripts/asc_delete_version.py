@@ -150,11 +150,31 @@ def main():
                   f"(id={v['id']}, state={state})")
             continue
         if args.set_notes:
-            code, resp = api(f"/v1/appStoreVersions/{v['id']}", method="PATCH",
-                             data={"data": {"type": "appStoreVersions", "id": v["id"],
-                                            "attributes": {"whatsNew": args.set_notes}}})
-            if code == 200:
-                print(f"NOTES SET on {args.platform} {args.version} (id={v['id']})")
+            # "What's New" lives on the per-locale appStoreVersionLocalizations resource.
+            code, locs = api(f"/v1/appStoreVersions/{v['id']}/appStoreVersionLocalizations?limit=50")
+            if code != 200:
+                print(f"Localization listing failed for id={v['id']}: HTTP {code}", file=sys.stderr)
+                print(json.dumps(locs, indent=2)[:800], file=sys.stderr)
+                sys.exit(1)
+            items = locs.get("data", [])
+            if items:
+                loc = items[0]
+                code, resp = api(f"/v1/appStoreVersionLocalizations/{loc['id']}", method="PATCH",
+                                 data={"data": {"type": "appStoreVersionLocalizations",
+                                                "id": loc["id"],
+                                                "attributes": {"whatsNew": args.set_notes}}})
+                where = f"localization {loc['id']} ({loc['attributes'].get('locale')})"
+            else:
+                code, resp = api("/v1/appStoreVersionLocalizations", method="POST",
+                                 data={"data": {"type": "appStoreVersionLocalizations",
+                                                "attributes": {"locale": "en-US",
+                                                               "whatsNew": args.set_notes},
+                                                "relationships": {"appStoreVersion": {
+                                                    "data": {"type": "appStoreVersions",
+                                                             "id": v["id"]}}}}})
+                where = "new en-US localization"
+            if code in (200, 201):
+                print(f"NOTES SET on {args.platform} {args.version} via {where}")
             else:
                 print(f"SET NOTES FAILED for id={v['id']}: HTTP {code}", file=sys.stderr)
                 print(json.dumps(resp, indent=2)[:1200], file=sys.stderr)
