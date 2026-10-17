@@ -304,6 +304,7 @@ jobs:
             echo -n "$ASC_KEY_P8" | base64 --decode -o "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           fi
           VER="$APP_VERSION"
+          set -o pipefail
           xcrun altool --upload-package dist/*.pkg \
             --type macos \
             --apple-id "$APPLE_APP_ID" \
@@ -311,7 +312,10 @@ jobs:
             --bundle-version "$BUILD_NUM" \
             --bundle-short-version-string "$VER" \
             --apiKey "$ASC_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID"
+            --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee dist/mac-upload.log
+          # altool can exit 0 even when Apple's validation reports UPLOAD FAILED.
+          grep -q 'UPLOAD SUCCEEDED with no errors' dist/mac-upload.log
+          ! grep -Eq 'UPLOAD FAILED|Validation failed|Failed to upload package' dist/mac-upload.log
 
       - name: Attach signed package
         if: env.HAS_SIGNING == 'true'
