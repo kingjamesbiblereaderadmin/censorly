@@ -46,7 +46,7 @@ jobs:
           if [[ "$ASC_KEY_P8" == *'BEGIN PRIVATE KEY'* ]]; then
             printf '%s\n' "$ASC_KEY_P8" > "$KEY"
           else
-            echo -n "$ASC_KEY_P8" | base64 --decode -o "$KEY"
+            echo -n "$ASC_KEY_P8" | base64 --decode > "$KEY"
           fi
           chmod 600 "$KEY"
           echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
