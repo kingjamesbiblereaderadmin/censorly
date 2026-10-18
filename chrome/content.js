@@ -1,4 +1,4 @@
-// Content script v6.4 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard + editor-safe filtering (rich text editors are never touched)
+// Content script v6.5 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard + editor-safe filtering (rich text editors are never touched)
 
 // ─── State ────────────────────────────────────────────────
 let filterState = {
@@ -208,7 +208,7 @@ csStyle.textContent = `
 // editable surfaces at all: focused or unfocused, empty or full, their text
 // is left completely unfiltered.
 //
-// Editor-adjacent widgets are covered too (v6.4). Mention/typeahead pickers,
+// Editor-adjacent widgets are covered too (v6.5). Mention/typeahead pickers,
 // autocomplete popups, emoji menus and comboboxes render OUTSIDE the
 // contenteditable in portals (e.g. twitter.com's @-mention dropdown). They are
 // React-managed: wrapping a suggestion's text in a cs-* span breaks
