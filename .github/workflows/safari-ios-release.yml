@@ -24,7 +24,7 @@ jobs:
         with:
           xcode-version: '26.0'
 
-      - name: Convert Safari extension for iOS and macOS
+      - name: Convert Safari extension for iOS (no Apple Watch destination)
         run: |
           set -eu
           if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
@@ -34,7 +34,7 @@ jobs:
           fi
           xcrun "$TOOL" "$PWD/safari" \
             --app-name "$APP_NAME" --bundle-identifier "$BUNDLE_ID" \
-            --project-location "$PWD" --swift \
+            --project-location "$PWD" --swift --ios-only \
             --copy-resources --no-open --no-prompt --force
           test -d "$APP_NAME/$APP_NAME.xcodeproj"
 
@@ -173,7 +173,7 @@ jobs:
           set -eu
           test -n "$APPLE_TEAM_ID"
           PROJ="$PWD/Censorly/Censorly.xcodeproj"
-          SCHEME=$(xcodebuild -list -project "$PROJ" -json | python3 -c 'import json,sys; s=json.load(sys.stdin)["project"]["schemes"]; print(next(x for x in s if "(iOS)" in x and "Extension" not in x))')
+          SCHEME=$(xcodebuild -list -project "$PROJ" -json | python3 -c 'import json,sys; s=json.load(sys.stdin)["project"]["schemes"]; print(next((x for x in s if "(iOS)" in x and "Extension" not in x), next((x for x in s if "Extension" not in x), s[0])))')
           KEY="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           mkdir -p dist
           xcodebuild archive -project "$PROJ" -scheme "$SCHEME" \

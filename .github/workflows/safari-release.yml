@@ -58,7 +58,7 @@ jobs:
           xcrun --find safari-web-extension-converter 2>&1 || true
           xcrun --find safari-web-extension-packager 2>&1 || true
 
-      - name: Convert to Xcode project
+      - name: Convert to macOS-only Xcode project (no Apple Watch destination)
         run: |
           set -eu
           if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
@@ -71,7 +71,7 @@ jobs:
             --app-name "$APP_NAME" \
             --bundle-identifier "$BUNDLE_ID" \
             --project-location "$PWD" \
-            --swift \
+            --swift --macos-only \
             --copy-resources --no-open --no-prompt --force
           test -d "$PWD/$APP_NAME/$APP_NAME.xcodeproj"
 

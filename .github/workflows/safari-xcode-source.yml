@@ -2,6 +2,11 @@ name: Safari Xcode Project Download
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'safari/**'
+      - '.github/workflows/safari-xcode-source.yml'
 
 jobs:
   convert:
@@ -13,7 +18,7 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '26.0'
-      - name: Generate iPhone, iPad, and Mac Xcode project
+      - name: Generate iOS-only and macOS-only Xcode projects (no Apple Watch destination)
         run: |
           set -eu
           if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
@@ -24,68 +29,85 @@ jobs:
           xcrun "$TOOL" "$PWD/safari" \
             --app-name Censorly \
             --bundle-identifier Com.censorly.extension \
-            --project-location "$PWD" \
+            --project-location "$PWD/ios" \
+            --ios-only \
             --swift --copy-resources --no-open --no-prompt --force
-          test -d Censorly/Censorly.xcodeproj
-      - name: Apply source version and iOS/macOS app icons
+          xcrun "$TOOL" "$PWD/safari" \
+            --app-name Censorly \
+            --bundle-identifier Com.censorly.extension \
+            --project-location "$PWD/macos" \
+            --macos-only \
+            --swift --copy-resources --no-open --no-prompt --force
+          test -d ios/Censorly/Censorly.xcodeproj
+          test -d macos/Censorly/Censorly.xcodeproj
+      - name: Apply source version, app icons, and extension identifier
         run: |
           python3 - <<'PY'
           import json, pathlib, re, subprocess
           version = json.loads(pathlib.Path('safari/manifest.json').read_text())['version']
-          project = pathlib.Path('Censorly/Censorly.xcodeproj/project.pbxproj')
-          contents = project.read_text()
-          contents, count = re.subn(r'MARKETING_VERSION = [^;]*;', f'MARKETING_VERSION = "{version}";', contents)
-          assert count >= 4, f'Expected app and extension version settings; found {count}'
-          project.write_text(contents)
           src = pathlib.Path('safari/app-icon-512.png').resolve()
-          catalogs = list(pathlib.Path('Censorly').rglob('AppIcon.appiconset'))
-          assert len(catalogs) >= 1, f'No app icon asset catalog found: {catalogs}'
-          platforms = set()
-          for directory in catalogs:
-              data = json.loads((directory / 'Contents.json').read_text())
-              for image in data['images']:
-                  platform = image.get('platform') or image.get('idiom')
-                  if platform == 'ios' and image.get('size') == '1024x1024':
-                      size = 1024
-                  elif platform == 'mac':
-                      size = int(image['size'].split('x')[0]) * int(image['scale'][0])
-                  else:
-                      continue
-                  platforms.add(platform)
-                  filename = image.get('filename')
-                  if not filename:
-                      filename = f'censorly-icon-{platform}-{size}.png'
+          for flavor, root in (('ios', pathlib.Path('ios/Censorly')),
+                               ('macos', pathlib.Path('macos/Censorly'))):
+              pbx_path = root / 'Censorly.xcodeproj' / 'project.pbxproj'
+              contents = pbx_path.read_text()
+              contents, count = re.subn(r'MARKETING_VERSION = [^;]*;',
+                                        f'MARKETING_VERSION = "{version}";', contents)
+              assert count >= 2, f'{flavor}: expected app and extension version settings; found {count}'
+              pbx_path.write_text(contents)
+              ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', contents))
+              ext = next((i for i in ids if i.endswith('.Extension')), None)
+              assert ext, f'{flavor}: extension bundle identifier not found in {ids}'
+              for swift in root.rglob('ViewController.swift'):
+                  text = swift.read_text()
+                  text, n = re.subn(r'let extensionBundleIdentifier = "[^"]*"',
+                                    f'let extensionBundleIdentifier = "{ext}"', text)
+                  assert n == 1, f'{swift}: expected one extensionBundleIdentifier declaration, found {n}'
+                  swift.write_text(text)
+              catalogs = list(root.rglob('AppIcon.appiconset'))
+              assert catalogs, f'{flavor}: no AppIcon.appiconset found'
+              placed = False
+              for directory in catalogs:
+                  data = json.loads((directory / 'Contents.json').read_text())
+                  for image in data['images']:
+                      platform = image.get('platform') or image.get('idiom')
+                      if flavor == 'ios' and platform == 'ios' and image.get('size') == '1024x1024':
+                          size = 1024
+                      elif flavor == 'macos' and platform == 'mac':
+                          size = int(image['size'].split('x')[0]) * int(image['scale'][0])
+                      else:
+                          continue
+                      filename = image.get('filename') or f'censorly-icon-{platform}-{size}.png'
                       image['filename'] = filename
-                  subprocess.run(['sips', '-z', str(size), str(size), str(src), '--out', str(directory / filename)], check=True, stdout=subprocess.DEVNULL)
-              (directory / 'Contents.json').write_text(json.dumps(data, indent=2) + '\n')
-          assert {'mac', 'ios'} <= platforms, f'Missing app icons: {platforms}'
-          print(f'Prepared Censorly v{version} Xcode project with {platforms} app icons')
+                      subprocess.run(['sips', '-z', str(size), str(size), str(src),
+                                      '--out', str(directory / filename)],
+                                     check=True, stdout=subprocess.DEVNULL)
+                      placed = True
+                  (directory / 'Contents.json').write_text(json.dumps(data, indent=2) + '\n')
+              assert placed, f'{flavor}: no matching app icon slot in {catalogs}'
+              print(f'Prepared {flavor} Censorly v{version} project (Apple Watch excluded)')
           PY
-          xcodebuild -list -project Censorly/Censorly.xcodeproj
-      - name: Sync extension identifier in app template
+      - name: Verify no Apple Watch references remain
         run: |
-          python3 - <<'PY'
-          import re, pathlib
-          pbx = pathlib.Path('Censorly/Censorly.xcodeproj/project.pbxproj').read_text()
-          ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', pbx))
-          ext = next(i for i in ids if i.endswith('.Extension'))
-          changed = 0
-          for swift in pathlib.Path('Censorly').rglob('ViewController.swift'):
-              text = swift.read_text()
-              text, n = re.subn(r'let extensionBundleIdentifier = "[^"]*"',
-                                f'let extensionBundleIdentifier = "{ext}"', text)
-              assert n == 1, f'{swift}: expected one extensionBundleIdentifier declaration, found {n}'
-              swift.write_text(text)
-              changed += 1
-          assert changed >= 1, 'No ViewController.swift found'
-          print(f'Synced extensionBundleIdentifier to {ext} in {changed} file(s)')
-          PY
-      - name: Package Xcode project
+          set -eu
+          # All generated Xcode metadata must be watch-free (extension web code excluded).
+          if grep -rniE 'watch' ios/Censorly macos/Censorly \
+              --exclude='*.js' --exclude='*.html' --exclude='*.css'; then
+            echo "::error::Apple Watch references remain in the generated projects"
+            exit 1
+          fi
+          xcodebuild -list -project ios/Censorly/Censorly.xcodeproj
+          xcodebuild -list -project macos/Censorly/Censorly.xcodeproj
+      - name: Package Xcode projects
         run: |
+          set -eu
           mkdir -p dist
           VERSION=$(python3 -c "import json; print(json.load(open('safari/manifest.json'))['version'])")
-          ditto -c -k --sequesterRsrc --keepParent Censorly "dist/Censorly-v${VERSION}-Xcode-project.zip"
-          unzip -t "dist/Censorly-v${VERSION}-Xcode-project.zip" | tail -1
+          mv ios/Censorly dist/Censorly-iOS-iphone-ipad
+          mv macos/Censorly dist/Censorly-macOS
+          ditto -c -k --sequesterRsrc --keepParent dist/Censorly-iOS-iphone-ipad "dist/Censorly-v${VERSION}-iOS-Xcode-project.zip"
+          ditto -c -k --sequesterRsrc --keepParent dist/Censorly-macOS "dist/Censorly-v${VERSION}-macOS-Xcode-project.zip"
+          unzip -t "dist/Censorly-v${VERSION}-iOS-Xcode-project.zip" | tail -1
+          unzip -t "dist/Censorly-v${VERSION}-macOS-Xcode-project.zip" | tail -1
       - uses: actions/upload-artifact@v4
         with:
           name: Censorly-Safari-Xcode-project
