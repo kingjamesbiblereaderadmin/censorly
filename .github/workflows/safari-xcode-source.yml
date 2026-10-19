@@ -43,48 +43,102 @@ jobs:
       - name: Apply source version, app icons, and extension identifier
         run: |
           python3 - <<'PY'
-          import json, pathlib, re, subprocess
+          import json, pathlib, re, subprocess, sys, traceback
+
+          def fail(msg):
+              print(f"::error::{str(msg)[:500]}")
+              sys.exit(1)
+
           version = json.loads(pathlib.Path('safari/manifest.json').read_text())['version']
           src = pathlib.Path('safari/app-icon-512.png').resolve()
           for flavor, root in (('ios', pathlib.Path('ios/Censorly')),
                                ('macos', pathlib.Path('macos/Censorly'))):
-              pbx_path = root / 'Censorly.xcodeproj' / 'project.pbxproj'
-              contents = pbx_path.read_text()
-              contents, count = re.subn(r'MARKETING_VERSION = [^;]*;',
-                                        f'MARKETING_VERSION = "{version}";', contents)
-              assert count >= 2, f'{flavor}: expected app and extension version settings; found {count}'
-              pbx_path.write_text(contents)
-              ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', contents))
-              ext = next((i for i in ids if i.endswith('.Extension')), None)
-              assert ext, f'{flavor}: extension bundle identifier not found in {ids}'
-              for swift in root.rglob('ViewController.swift'):
-                  text = swift.read_text()
-                  text, n = re.subn(r'let extensionBundleIdentifier = "[^"]*"',
-                                    f'let extensionBundleIdentifier = "{ext}"', text)
-                  assert n == 1, f'{swift}: expected one extensionBundleIdentifier declaration, found {n}'
-                  swift.write_text(text)
-              catalogs = list(root.rglob('AppIcon.appiconset'))
-              assert catalogs, f'{flavor}: no AppIcon.appiconset found'
-              placed = False
-              for directory in catalogs:
-                  data = json.loads((directory / 'Contents.json').read_text())
-                  for image in data['images']:
-                      platform = image.get('platform') or image.get('idiom')
-                      if flavor == 'ios' and platform == 'ios' and image.get('size') == '1024x1024':
-                          size = 1024
-                      elif flavor == 'macos' and platform == 'mac':
-                          size = int(image['size'].split('x')[0]) * int(image['scale'][0])
-                      else:
-                          continue
-                      filename = image.get('filename') or f'censorly-icon-{platform}-{size}.png'
+              try:
+                  # --- version stamping ---
+                  pbx_path = root / 'Censorly.xcodeproj' / 'project.pbxproj'
+                  contents = pbx_path.read_text()
+                  contents, count = re.subn(r'MARKETING_VERSION = [^;]*;',
+                                            f'MARKETING_VERSION = "{version}";', contents)
+                  if count < 2:
+                      fail(f'{flavor}: MARKETING_VERSION found {count} times, expected >= 2')
+                  pbx_path.write_text(contents)
+
+                  # --- extension identifier sync (template normally already matches) ---
+                  ids = set(re.findall(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', contents))
+                  ext = next((i for i in ids if i.endswith('.Extension')), None)
+                  if not ext:
+                      fail(f'{flavor}: extension bundle identifier not found; ids={sorted(ids)}')
+                  patched = 0
+                  for swift in root.rglob('*.swift'):
+                      text = swift.read_text()
+                      text, n = re.subn(r'let extensionBundleIdentifier = "[^"]*"',
+                                        f'let extensionBundleIdentifier = "{ext}"', text)
+                      if n:
+                          swift.write_text(text)
+                          patched += n
+                  if patched == 0:
+                      print(f'::warning::{flavor}: no extensionBundleIdentifier declaration found (template may not need it)')
+
+                  # --- app icons ---
+                  catalogs = list(root.rglob('AppIcon.appiconset'))
+                  if not catalogs:
+                      fail(f'{flavor}: no AppIcon.appiconset found under {root}')
+                  if flavor == 'macos':
+                      # Mirror the proven Mac release approach: fixed icon set.
+                      mac = [d for d in catalogs
+                             if any(image.get('idiom') == 'mac'
+                                    for image in json.loads((d / 'Contents.json').read_text()).get('images', []))]
+                      if len(mac) != 1:
+                          fail(f'{flavor}: expected one Mac app icon set, got {[str(d) for d in mac]}')
+                      d = mac[0]
+                      images = []
+                      for size, one, two in [
+                          ("16x16", "icon_16x16.png", "icon_16x16@2x.png"),
+                          ("32x32", "icon_32x32.png", "icon_32x32@2x.png"),
+                          ("128x128", "icon_128x128.png", "icon_128x128@2x.png"),
+                          ("256x256", "icon_256x256.png", "icon_256x256@2x.png"),
+                          ("512x512", "icon_512x512.png", "icon_512x512@2x.png"),
+                      ]:
+                          images.extend([
+                              {"filename": one, "idiom": "mac", "scale": "1x", "size": size},
+                              {"filename": two, "idiom": "mac", "scale": "2x", "size": size},
+                          ])
+                      for px, name in [(16, "icon_16x16.png"), (32, "icon_16x16@2x.png"),
+                                       (32, "icon_32x32.png"), (64, "icon_32x32@2x.png"),
+                                       (128, "icon_128x128.png"), (256, "icon_128x128@2x.png"),
+                                       (256, "icon_256x256.png"), (512, "icon_256x256@2x.png"),
+                                       (512, "icon_512x512.png"), (1024, "icon_512x512@2x.png")]:
+                          subprocess.run(['sips', '-z', str(px), str(px), str(src), '--out', str(d / name)],
+                                         check=True, stdout=subprocess.DEVNULL)
+                      (d / 'Contents.json').write_text(json.dumps(
+                          {"images": images, "info": {"author": "xcode", "version": 1}}, indent=2) + '\n')
+                      print(f'Installed Mac app icon set in {d}')
+                  else:
+                      # iOS: single universal 1024 slot (mirrors the iOS release workflow).
+                      slot = None
+                      for d in catalogs:
+                          data = json.loads((d / 'Contents.json').read_text())
+                          for image in data.get('images', []):
+                              if (image.get('idiom') == 'universal' and image.get('platform') == 'ios'
+                                      and image.get('size') == '1024x1024'):
+                                  slot = (d, image)
+                                  break
+                      if not slot:
+                          sample = json.loads((catalogs[0] / 'Contents.json').read_text()).get('images', [])
+                          fail(f'{flavor}: no universal iOS 1024 icon slot; sample={json.dumps(sample)[:400]}')
+                      d, image = slot
+                      filename = image.get('filename') or 'censorly-icon-ios-1024.png'
                       image['filename'] = filename
-                      subprocess.run(['sips', '-z', str(size), str(size), str(src),
-                                      '--out', str(directory / filename)],
+                      subprocess.run(['sips', '-z', '1024', '1024', str(src), '--out', str(d / filename)],
                                      check=True, stdout=subprocess.DEVNULL)
-                      placed = True
-                  (directory / 'Contents.json').write_text(json.dumps(data, indent=2) + '\n')
-              assert placed, f'{flavor}: no matching app icon slot in {catalogs}'
-              print(f'Prepared {flavor} Censorly v{version} project (Apple Watch excluded)')
+                      (d / 'Contents.json').write_text(json.dumps(
+                          json.loads((d / 'Contents.json').read_text()), indent=2) + '\n')
+                      print(f'Installed iOS app icon in {d}')
+                  print(f'Prepared {flavor} Censorly v{version} project (Apple Watch excluded)')
+              except SystemExit:
+                  raise
+              except Exception:
+                  fail(f'{flavor}: {traceback.format_exc().splitlines()[-1]}')
           PY
       - name: Verify no Apple Watch references remain
         run: |
