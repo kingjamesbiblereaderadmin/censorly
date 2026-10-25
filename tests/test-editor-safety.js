@@ -3,7 +3,7 @@
 //  A. Editor DOM is never touched (no cs-* spans, no node swaps/clones)
 //  B. No contenteditable writes, no replaceChildren/innerHTML/cloneNode paths
 //  C. restoreAll only unwraps cs-* spans (parent identity preserved)
-//  Read-only text still filters in hide/censor/blur; input.value censoring works.
+//  Read-only text still filters in hide/censor/blur; input values are never modified.
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
@@ -107,9 +107,9 @@ function editorIntact(doc, rootId, expectedText) {
   const mixedEd = editorIntact(doc, 'mixed-ed', 'bastard draft');
   check('contenteditable=plaintext-only untouched', mixedEd.spans.length === 0 && mixedEd.textOk, JSON.stringify(mixedEd.text));
 
-  // B: input.value censoring still works, no editable writes
+  // B: input values are never modified (v6.6 input safety)
   const inp = doc.getElementById('inp');
-  check('input value censored with blocks', inp.value === '\u2588\u2588\u2588\u2588 input value', inp.value);
+  check('input value untouched', inp.value === 'damn input value', inp.value);
 
   // C: restoreAll unwraps in place — parent identity and child structure preserved
   const pBefore = doc.getElementById('ro-p');

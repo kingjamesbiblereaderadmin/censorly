@@ -1,4 +1,4 @@
-// Content script v6.5 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard + editor-safe filtering (rich text editors are never touched)
+// Content script v6.6 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard + editor-safe filtering (rich text editors are never touched)
 
 // ─── State ────────────────────────────────────────────────
 let filterState = {
@@ -246,66 +246,13 @@ function stripDiacritics(text) {
   return out;
 }
 
-// ─── Input/Textarea/Contenteditable Censoring ────────────
-// Maps are intentionally iterable: restore and form-submit paths must be able
-// to restore every modified field before clearing tracked originals.
-const originalInputValues = new Map();
-const INPUT_SELECTOR = 'input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="tel"], input:not([type]), textarea';
-
-function queryWithin(root, selector) {
-  const scope = root && root.nodeType === Node.ELEMENT_NODE ? root : document;
-  const results = [];
-  if (scope.matches && scope.matches(selector)) results.push(scope);
-  if (scope.querySelectorAll) results.push(...scope.querySelectorAll(selector));
-  return results;
-}
-
-function censorInputFields(root = document) {
-  if (!isFilteringActive()) return;
-
-  queryWithin(root, INPUT_SELECTOR).forEach(input => {
-    if (document.activeElement === input) return;
-    const value = input.value;
-    if (!value || !value.trim()) return;
-
-    const matches = findMatches(stripDiacritics(value), combinedMatcher);
-    if (matches.length === 0) return;
-
-    let censored = value;
-    for (let i = matches.length - 1; i >= 0; i--) {
-      const match = matches[i];
-      censored = censored.slice(0, match.start) + '\u2588'.repeat(match.end - match.start) + censored.slice(match.end);
-    }
-
-    if (!originalInputValues.has(input)) originalInputValues.set(input, value);
-    input.value = censored;
-    input.dataset.csInputCensored = 'true';
-  });
-
-}
-
-document.addEventListener('focus', (e) => {
-  if (e.target.matches && e.target.matches(INPUT_SELECTOR)) {
-    const orig = originalInputValues.get(e.target);
-    if (orig !== undefined) {
-      e.target.value = orig;
-      delete e.target.dataset.csInputCensored;
-    }
-  }
-}, true);
-
-document.addEventListener('blur', (e) => {
-  if (e.target.matches && e.target.matches(INPUT_SELECTOR)) {
-    originalInputValues.set(e.target, e.target.value);
-    setTimeout(() => censorInputFields(), 50);
-  }
-}, true);
-
-document.addEventListener('submit', (e) => {
-  originalInputValues.forEach((original, input) => {
-    if (input.form === e.target) input.value = original;
-  });
-}, true);
+// ─── Input safety (v6.6) ──────────────────────────────────
+// <input>, <textarea> and every other editable surface is NEVER modified.
+// The old input-value censoring swap replaced input.value with redaction
+// blocks for display and restored the original only on native form submit.
+// Sites that submit via JavaScript (e.g. Bible Gateway's search) read the
+// swapped value, so the user's typed text was lost. Inputs are now treated
+// exactly like rich text editors: read-only, never touched.
 
 // ─── Fast matching and mutation-scoped filtering ─────────
 let combinedMatcher = null;
@@ -379,7 +326,6 @@ function processRoot(root) {
   if (target === document.body) initialBodyProcessed = true;
   filterCrossNodePhrases(target);
   filterAllText(target);
-  censorInputFields(target);
 }
 
 function filterAllText(root) {
@@ -491,8 +437,6 @@ function restoreAll() {
     if (span.parentElement) span.replaceWith(document.createTextNode(span.textContent));
   });
   document.querySelectorAll('[data-cs-filtered]').forEach(el => delete el.dataset.csFiltered);
-  originalInputValues.forEach((original, input) => { if (input.isConnected) input.value = original; });
-  originalInputValues.clear();
 }
 
 function applyModeInstantly() {
