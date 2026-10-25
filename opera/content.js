@@ -1,4 +1,4 @@
-// Content script v6.7 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard + editor-safe filtering (rich text editors are never touched)
+// Content script v6.8 — Censorly DOM text filtering with accent-insensitive matching, site exclusions + sensitive-page safeguard + editor-safe filtering (rich text editors are never touched)
 
 // ─── State ────────────────────────────────────────────────
 let filterState = {
@@ -246,7 +246,7 @@ function stripDiacritics(text) {
   return out;
 }
 
-// ─── Input safety (v6.7) ──────────────────────────────────
+// ─── Input safety (v6.8) ──────────────────────────────────
 // <input>, <textarea> and every other editable surface is NEVER modified.
 // The old input-value censoring swap replaced input.value with redaction
 // blocks for display and restored the original only on native form submit.
