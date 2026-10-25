@@ -69,7 +69,7 @@ jobs:
           def patch(match):
               block = match.group(0)
               found = re.search(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', block)
-              if not found or not ('SDKROOT = iphoneos;' in block or 'iOS (' in block):
+              if not found:
                   return block
               is_extension = found.group(1).endswith('.Extension') or '(Extension)/Info.plist' in block
               bundle = extension if is_extension else app
